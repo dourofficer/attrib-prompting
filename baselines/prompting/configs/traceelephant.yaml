@@ -1,0 +1,37 @@
+models:  [qwen3.5-9b, deepseek-8b]
+subsets: [magentic, captain]
+methods: [all_at_once, step_by_step, binary_search]
+
+data_dir:     data/traceelephant
+outputs_root: outputs-traceelephant/prompting
+
+dtype:          bfloat16
+seed:           0
+temperature:    0.6
+top_p:          0.95
+gen_max_tokens: 1024
+enable_thinking: false
+
+# traceelephant prompts are short (max ~11k tokens), but keep the shared ceiling
+# high so nothing ever truncates. Both checkpoints natively support ≥128k.
+max_model_len:          131072
+truncate_prompt_tokens: null
+gpu_memory_utilization: 0.90
+tensor_parallel_size:   1
+
+start_idx: 0
+end_idx:   null
+
+model_paths:
+  # qwen3.5-9b:  /data/hoang/resources/models/Qwen/Qwen3.5-9B
+  # deepseek-8b: /data/hoang/resources/models/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+  qwen3.5-9b:   ../hub/Qwen/Qwen3.5-9B
+  deepseek-8b:  ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+
+# Corrected tokenizer for deepseek-8b: its checkpoint tokenizer_config sets
+# tokenizer_class=LlamaTokenizerFast, which makes transformers build a
+# SentencePiece tokenizer that ignores the llama-3 ByteLevel tokenizer.json and
+# mangles spaces. This repo-local copy fixes only tokenizer_class (chat template
+# preserved). qwen3.5-9b uses its own (correct) tokenizer, so it's omitted here.
+tokenizer_paths:
+  deepseek-8b: baselines/prompting/tokenizers/deepseek-8b

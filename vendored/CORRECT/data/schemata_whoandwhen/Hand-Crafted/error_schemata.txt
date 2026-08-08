@@ -1,0 +1,2295 @@
+=== Schema for Error Log 1 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 12
+Reason for Mistake: The agent clicked a relevant-looking link on an ad-heavy directory site, but navigation was hijacked by an interstitial/advertisement, landing on an unrelated site (KEYENCE) and breaking task context. Similar errors can be identified by the following:
+
+Error Signatures:
+- Mismatch between the clicked link label (e.g., a dojo name) and the resulting page’s domain/title/content.
+- Page content lacks task keywords (e.g., “martial arts,” “class schedule,” “address”) and instead shows ad/marketing copy, often in a different language.
+- URLs with ad/tracking patterns (utm_, gclid, landing, lpc) or interstitial markers (#google_vignette).
+- Presence of explicit ad indicators: “Ad,” “Advertisement,” “Sponsored,” brand promos (e.g., KEYENCE), “Start/Open/Learn more” CTAs.
+- Repeated low-information actions: “clicked the control,” repeated “back button” usage, no extraction of required data.
+
+Error Context Analysis:
+- Typically occurs on aggregator/directory pages with heavy ads when following “Details/Contact/Map” links.
+- Preceded by otherwise relevant search steps; the derailment happens right at the click-through step.
+- Orchestrator state often reflects stalled progress: is_in_loop = true, is_progress_being_made = false; repeated navigation without new, task-relevant facts.
+
+Detection Heuristics:
+- Questions to ask:
+  - Does the current page domain and topic align with the clicked link and the task (martial arts near NYSE)?
+  - Does the page contain required entities (dojo name, address, schedule) or task keywords?
+  - Are there interstitial/ad signals (e.g., #google_vignette, “Advertisement,” utm_/gclid in URL)?
+  - Have 2–3 steps passed without capturing any new required data?
+- Analytical framework:
+  - Click Intent vs Page Reality: compare link label → resulting domain/title → page content topic.
+  - Task Keyword Presence Test: scan for domain-specific terms; absence signals derailment.
+  - Progress Delta Check: verify net new facts gathered since the last click.
+- Reliable indicators (phrases/patterns):
+  - “I clicked ‘[dojo name]’” followed by a non-dojo site/page.
+  - “I clicked the control” with no task-relevant outcome.
+  - Repeated “browser back button” with return to ad-heavy pages.
+  - Non-English tech/product ads; metadata like robots: noindex,nofollow; ad-brand names (e.g., KEYENCE).
+
+==================================================
+
+=== Schema for Error Log 2 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 4
+Reason for Mistake: Returned a generic search engine results page (SERP) instead of opening authoritative sources and extracting task-relevant facts. The content presented was unvetted (snippets/PAA/aggregator links) and did not meet the Orchestrator’s explicit requirements (list of series, multi-season filter, Rotten Tomatoes ratings, Prime Video US availability).
+
+1) Error Signatures
+- Output references a search results page rather than a specific source page (e.g., “Here is a screenshot of [Search]”).
+- Presence of SERP artifacts: “About X results,” “People also ask,” “Explore more,” result snippets, right-rail knowledge panels.
+- No concrete data extracted that maps to required constraints (no titles list, no season counts, no Rotten Tomatoes scores, no Prime availability).
+- Mentions broad/low-reliability aggregators (e.g., Ranker) without validation or cross-checking.
+- Heavy reliance on OCR from SERP screenshots; minimal or no clicked-through content.
+- Vague progress statements without deliverables aligned to instruction.
+
+2) Error Context Analysis
+- Occurs early in data-gathering when the instruction requires verified, multi-constraint information.
+- Preceded by an Orchestrator prompt that specifies multiple constraints (list titles, confirm multi-season, collect Rotten Tomatoes ratings).
+- The agent responds by only performing the search, not opening/using authoritative pages (IMDb/Wikipedia/Rotten Tomatoes/Amazon) to extract data.
+- Often followed by repeated nudges to “scroll” or “continue searching,” indicating stalled extraction.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Did the agent provide structured outputs that directly satisfy each stated constraint (titles, multi-season confirmation, Rotten Tomatoes ratings, Prime US availability)?
+  - Did the agent cite/open authoritative source pages rather than just a SERP?
+  - Is any provided information directly traceable to a specific, reliable page with verifiable details?
+- Analytical framework:
+  - Constraint-to-Output Checklist:
+    - Titles list present? Y/N
+    - Multi-season status confirmed? Y/N
+    - Rotten Tomatoes ratings captured? Y/N
+    - Amazon Prime Video (US) availability verified? Y/N
+    - Sources are authoritative and clicked-through (IMDb/Wikipedia/RottenTomatoes/Amazon/official network)? Y/N
+  - If two or more are “No,” flag as SERP-only/insufficient evidence error.
+- Key indicators/phrases:
+  - “Here is a screenshot of [Search]”
+  - “People also ask,” “About X results,” “Explore more”
+  - “Typed ‘[query]’ into the browser,” with no subsequent “opened [reliable page]”
+  - Lists Ranker/TV Guide snippets without verification
+  - Absence of Rotten Tomatoes/Amazon Prime links or extracted figures/availability details
+
+==================================================
+
+=== Schema for Error Log 3 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 32
+Reason for Mistake: Navigation drift and looping on index/calendar pages instead of opening the target-dated APOD page and extracting the required field. The agent repeatedly scrolled archives and clicked unrelated-year calendar links (e.g., 2008, 2014) despite instructions to access August 1–7, 2015, resulting in no city-name extraction from an APOD description.
+
+1) Error Signatures
+- Repetitive navigation actions without content extraction:
+  - “I scrolled down one page…” on archivepix.html with minimal viewport progress.
+  - Clicking generic controls (“Jan,” “Aug”) but landing on the wrong year (e.g., 2008/2014).
+- URL/date mismatch:
+  - Staying on archive or calendar indexes instead of opening date-specific APOD URLs (expected pattern: /apod/ap15080[1-7].html).
+- Instruction-output mismatch:
+  - Repeated instructions to “identify the city” with no subsequent mention of a city or description snippet.
+- Loop indicators in orchestration logs:
+  - Ledger flags of “in loop” or “no significant progress.”
+- Absence of extraction artifacts:
+  - No quoted text from APOD description; no named entity (city) surfaced after page visits.
+
+2) Error Context Analysis
+- Typical context:
+  - Tasks requiring pinpointing a specific dated entry within a long archive (APOD).
+  - The agent starts from a high-level archive and must drill down to a specific date.
+- Common preceding sequence:
+  - Search → APOD archive landing → multiple scrolls through recent years → clicks on calendar links that open wrong years → repeated instructions to “navigate directly” to August 2015 → continued scrolling/clicking without reaching the correct dated page → no extraction.
+- Environmental cues:
+  - OCR shows long lists of unrelated dates (2024/2025) or wrong-year calendar headers (2008/2014).
+  - Frequent “viewport shows 1%” or tiny incremental scroll positions.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Are we currently on a date-specific APOD URL for 2015-08-0X (ap15080[1-7].html)?
+  - Has the agent extracted and reported a city name from any APOD description?
+  - Did the last 3–5 actions change the state from index/calendar to a specific daily APOD page?
+  - Is the year/month on the current page header 2015 August?
+- Analytical framework:
+  - Target-URL Check: Verify current URL matches the precise date pattern requested.
+  - Instruction-Outcome Consistency: Compare last instruction (identify city from APOD) with latest output (presence/absence of city or description snippet).
+  - Loopiness Metric: Flag when ≥2 consecutive “scroll down” or wrong-year calendar navigations occur without new, task-relevant data.
+  - Temporal Mismatch: Flag when page content years differ from the target (2015) after a “navigate directly” instruction.
+- Key phrases/patterns to flag:
+  - “I scrolled down one page…” repeated.
+  - “Please continue scrolling…” instructions recurring.
+  - Page headers like “APOD 2008 August” or “APOD 2014 January” when 2015 Aug is required.
+  - URLs stuck on archivepix.html or allyears.html without transitions to ap15080X.html.
+  - Repeated prompts to “identify the city” with no city named afterward.
+
+==================================================
+
+=== Schema for Error Log 4 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent remained on search engine results/maps instead of opening and validating data on the required source (TripAdvisor). It summarized SERP snippets and place cards without verifying the numeric criteria (≥1,000 reviews, ≥4.5 rating) or collecting three distinct user confirmations of wheelchair accessibility. Similar errors can be identified when the agent’s browsing trace and evidence do not align with explicit source and evidence requirements.
+
+1. Error Signatures:
+- Persistent interaction with SERP pages or map/place cards (e.g., Bing results, “See more results”) without clicking through to TripAdvisor.
+- No TripAdvisor URLs opened or cited; domain remains bing.com/google.com or unrelated (AllTrails, NPS, Wikipedia).
+- Absence of concrete, source-backed numbers (exact review counts, average rating) or named/quoted user reviews.
+- Vague language: “popular,” “likely,” “known to be accessible,” without TripAdvisor-specific evidence.
+- Repeated viewport/OCR of search results instead of page-level content from TripAdvisor.
+
+2. Error Context Analysis:
+- The task explicitly requires verification from a specific platform (TripAdvisor) and multiple evidence points (review count, rating, ≥3 accessibility mentions).
+- Preceded by instructions to “visit TripAdvisor pages” or “verify on TripAdvisor,” followed by the agent continuing to browse/search rather than opening the specified pages.
+- The agent lists candidate trails from maps/search lists (e.g., Mist Trail, Panorama Trail) but does not transition to the corresponding TripAdvisor trail pages.
+- The conversation shows progress claims without any change in source domain or presentation of verified metrics.
+
+3. Detection Heuristics:
+- Source-alignment check: Did the agent open at least one TripAdvisor URL for each candidate? If no, flag.
+- Evidence completeness grid (per trail): 
+  - TripAdvisor review count present and ≥1,000? 
+  - TripAdvisor average rating present and ≥4.5?
+  - At least three distinct TripAdvisor user comments explicitly stating wheelchair accessibility? 
+  Any missing cell indicates this error pattern.
+- Action trace audit: Are clicks confined to SERP/map (“See more results,” map panels) without subsequent TripAdvisor page loads? If yes, flag.
+- Diagnostic questions:
+  - Which exact TripAdvisor page URLs were consulted?
+  - What are the precise review count and rating as displayed on TripAdvisor?
+  - Which three TripAdvisor users (or excerpts) mention wheelchair accessibility?
+- Indicator phrases/patterns:
+  - “See more results,” “Bing shows…,” “map shows…,” references to AllTrails/NPS/Wikipedia instead of TripAdvisor.
+  - Viewport/OCR reports of search pages, with no TripAdvisor page summaries.
+  - Qualifiers like “likely,” “probably,” “known to be,” absent direct TripAdvisor citations.
+
+==================================================
+
+=== Schema for Error Log 5 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 12
+Reason for Mistake: The agent asserted a specific lyric detail without extracting or citing on-screen evidence. It relied on a memory/snippet (“Then let me take a bite”) that belongs before the first chorus, not the second, and produced an answer despite the SERP OCR containing no usable lyric text. This mismatch between claimed evidence, page content, and song structure indicates unsupported inference and section misalignment.
+
+Error Signatures:
+- Answer given immediately after a SERP view where OCR shows little/no relevant text (e.g., “[Image]” or no lyrics visible).
+- Confident claim about a precise lyric position (e.g., “last word before the second chorus”) without:
+  - Opening a dedicated lyrics page
+  - Quoting a contiguous lyric block
+  - Citing a visible source/URL segment
+- Quoted line is commonly known from the song but mismatched to the claimed section (verse or pre-chorus presented as “before the second chorus”).
+- No scrolling/click-through action between “search” and “answer” steps; knowledge appears to “teleport” into the response.
+
+Error Context Analysis:
+- Typical setup: Correct identification of album/single, followed by a lyric lookup step confined to search results.
+- Preceded by: SERP page only; no navigation to a specific lyrics page or visible extraction of text.
+- The transition from “Please examine lyrics” to “final answer” occurs without new page interactions or OCR evidence.
+- Structural ambiguity trigger: The task requires chorus indexing (e.g., “second chorus”), increasing risk of mixing verse/pre-chorus/chorus.
+
+Detection Heuristics:
+- Verification questions:
+  - Is there a visible, cited page (URL and on-screen text) containing the quoted lyrics?
+  - Does the OCR or page excerpt include the exact quoted line?
+  - Did the agent perform a click/scroll into a lyrics page after the SERP before answering?
+  - Is the quoted line actually located immediately before the second chorus in authoritative lyric sources?
+- Analytical framework:
+  - Evidence-Source-Position (ESP) check:
+    - Evidence: Is the quoted text shown on-screen?
+    - Source: Is the source page identifiable and opened?
+    - Position: Is the lyric’s placement (before “second chorus”) supported by visible structure/labels?
+  - Continuity check: Is there a browsing action that logically produces the claimed text between steps?
+  - OCR fidelity check: If OCR yields no lyrics but an answer is produced, flag as high-risk.
+- Reliable indicators/phrases:
+  - “The last word before the second chorus is …” stated without a block quote or source.
+  - Reference to “Then let me take a bite” as the line before the second chorus (specific misalignment cue for “Human Nature”).
+  - Statements like “The lyrics preceding the second chorus are …” with no accompanying on-page excerpt or link.
+
+==================================================
+
+=== Schema for Error Log 6 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 5
+Reason for Mistake: Premature satisfaction based on a search-results snippet that referenced a large commercial property sale, not a residential high-rise apartment sale. The agent failed to validate all task constraints (asset type, location specificity, year) before concluding, and did not open or verify source content.
+
+1) Error Signatures
+- Immediate “request satisfied” after viewing only a SERP (search results page) snippet; no opened article or detailed source cited.
+- Evidence text contains commercial/office terms (press release, campus, office, life science, square foot, single property) instead of residential terms (apartment, condo, unit, bedroom, HOA).
+- Superlative language mismatches the query (highest price per square foot or highest price for a single property) substituted for highest apartment sale price.
+- Magnitude anomaly: billion-dollar figure or an amount far above plausible condo/apartment ranges for the area.
+- Final answer is a bare number with minimal or no context (no unit number, building name, or citation).
+- Referenced address or entity is known non-residential (e.g., 1800 Owens Street; corporate sellers/buyers mentioned).
+- Location granularity mismatch: cites “San Francisco” broadly without explicit “Mission Bay” apartment context.
+
+2) Error Context Analysis
+- Query requires strict constraint matching (asset type: high-rise apartment; location: Mission Bay; time: 2021; metric: highest sale price).
+- SERP prominently features newsworthy commercial transactions overshadowing residential results.
+- Interaction sequence: plan -> single search -> SERP displayed -> orchestrator declares completion without instructing to open/verify any result.
+- Lack of cross-referencing with residential databases or unit-level sale records; reliance on headline superlatives.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Does the cited asset explicitly state it is a residential apartment/condominium unit?
+  - Is there a unit number or residential building name (e.g., One Mission Bay, Arden, Radiance, The Beacon, Madrone)?
+  - Does the source explicitly confirm the sale occurred in 2021 and in Mission Bay?
+  - Is the price plausible for a residential unit vs. a commercial complex?
+  - Was the answer derived from an opened article/record, or only from a SERP snippet?
+- Analytical framework:
+  - Constraint alignment matrix: Asset type, Geography (Mission Bay), Time (2021), Metric (highest sale price) — mark each as Present/Absent/Contradictory in the cited evidence. Flag if any are Absent/Contradictory.
+  - Vocabulary-type check: Residential nouns (unit, condo, bedroom, HOA, building name) vs. Commercial nouns (campus, office, life science, press release, PSF).
+  - Magnitude sanity check: Flag values with “billion” or extreme outliers for residential context.
+  - Source-depth check: Flag answers that lack at least one opened source with transaction details.
+- Key indicators/phrases:
+  - Non-residential cues: “press release,” “Kilroy Realty,” “campus,” “office,” “life science,” “$X billion,” “$X per square foot,” “single property record.”
+  - Scope drift cues: “San Francisco” without “Mission Bay,” or missing “apartment/condo/unit.”
+  - Premature completion cues: Ledger marks “request satisfied” immediately after first search; final answer mirrors SERP headline language.
+
+==================================================
+
+=== Schema for Error Log 7 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent moved to the content page but skipped the prescribed evidence-gathering workflow (timestamps, screenshots, species extraction) and later allowed a conclusion to be produced without those artifacts. This reflects a premature-conclusion pattern: issuing or enabling a final answer without completing the required intermediate verification steps. Similar errors can be identified when navigation-only actions occur and deliverables are missing despite explicit instructions.
+
+1. Error Signatures:
+- Abrupt or implicit conclusion without intermediate artifacts (no screenshots, no timestamps, no species list).
+- Navigation-only activity logs (clicked, scrolled, opened) with no evidence of analysis actions (seek to time, capture, identify).
+- Repeated external prompts to “scan/take screenshots/identify timestamps” with no corresponding outputs from the agent.
+- Absence of key terms in agent messages: “screenshot,” “timestamp,” “species,” “frame,” “capture.”
+- Final numeric answer appears with no traceable reasoning chain or artifacts.
+
+2. Error Context Analysis:
+- Tasks that require visual verification and artifact capture (video analysis, frame inspection).
+- A plan explicitly enumerates required deliverables (screenshots, timestamps, species identification).
+- Preceded by the agent successfully loading the target page but not engaging with the content beyond surface navigation.
+- Orchestrator signals loop or lack of progress (e.g., repeated instructions to provide screenshots/timestamps).
+- Time pressure or incidental system errors elsewhere may co-occur, but the core issue is missing evidence steps before conclusion.
+
+3. Detection Heuristics:
+- Verification questions:
+  - Did the agent provide at least one timestamp?
+  - Did the agent attach or reference any screenshots/frames?
+  - Did the agent enumerate identified entities (e.g., bird species) tied to specific frames?
+  - Is there a step-by-step trail from viewing to evidence to conclusion?
+- Analytical framework:
+  - Deliverable traceability check: map required artifacts (timestamps, screenshots, identifications) to the agent’s outputs; flag if any are missing before a conclusion appears.
+  - Action-to-output parity: confirm that each instruction (scan, capture, identify) has a corresponding action and artifact.
+- Reliable indicators:
+  - Phrases like “I clicked,” “I scrolled,” “opened page” without follow-on “captured,” “timestamp,” “identified.”
+  - Final statements or numbers (“FINAL ANSWER: …”) appearing without referenced evidence.
+  - Orchestrator/other agents repeatedly reissuing the same request (loop) due to absent artifacts.
+
+==================================================
+
+=== Schema for Error Log 8 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent clicked on content that did not directly contain the time-specific data required (IPO-era C-suite). This reflects a pattern of selecting low-signal or tangential links instead of high-signal sources (e.g., SEC S-1/prospectus, dated executive lists) and proceeding without extracting the specific entities (names/roles) tied to the target date.
+
+1) Error Signatures
+- Opens generic or broad pages (press rooms, “View all press releases,” general news articles) instead of documents likely to enumerate executives (SEC S-1/prospectus, “executive officers,” governance pages with historical context).
+- Extracted text focuses on valuation/pricing/dates or marketing copy; missing the requested fields (names + roles).
+- Repeated “scrolling” actions without new entity extraction.
+- Paywalled article opened with no executive details captured.
+- Vague action logs such as “I clicked the control” or ambiguous clicks without naming high-relevance links.
+- No mention of keywords like “executive officers,” “management team (2021),” “leadership,” “governance,” “S-1,” or “prospectus.”
+
+2) Error Context Analysis
+- The task requires a time-bounded comparison (current vs IPO-era C-suite).
+- Search results visibly include high-signal sources (SEC filings, IR governance pages, prospectus PDFs), but the agent selects news/PR overviews.
+- Occurs right after clear instructions specifying the needed artifact (e.g., “SEC filings,” “list of C-suite at IPO”) yet the clicked page lacks that artifact.
+- Sequence often includes: targeted query → results with authoritative links present → agent clicks general article/press page → summary contains IPO facts but no executive list → continued scrolling without extraction.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Does the opened page list executive names and roles with a date/context matching the IPO timeframe?
+  - Is the clicked source authoritative for executive listings (SEC/IR/prospectus) or merely narrative news/PR?
+  - After 1–2 steps on the page, have any target entities (names/roles) been extracted?
+- Analytical framework:
+  - Intent–Click Alignment: Compare the instruction’s required artifact (e.g., “S-1 executive officers”) to the clicked page type; flag mismatch.
+  - Signal Scoring: Prioritize links containing keywords (S-1, prospectus, executive officers, management team, leadership, governance, 2021) and date proximity to IPO.
+  - Progress Delta: If two consecutive actions yield no relevant entities, flag as likely “non-useful click” pattern.
+- Key phrases/patterns indicating the error:
+  - “View all press releases,” “Press room,” “In the news,” “article is for subscribers only,” “I scrolled…”
+  - Summaries mentioning IPO price/valuation but no executives.
+  - Clicking unrelated or broad site pages (home pages, newsletters, unrelated feature articles) instead of the clearly relevant filing/IR link.
+
+==================================================
+
+=== Schema for Error Log 9 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 25
+Reason for Mistake: The Orchestrator initiated an unnecessary replan while a straightforward verification path was available. Instead of verifying candidate winners’ birthdates one by one (using already-surfaced names/sources), it reset the plan, reissued broad search tasks, and ultimately produced an unverified guess. This pattern is identifiable by repeated “replanning” events amid stalled progress, redundant search directives to the same sources, lack of new atomic facts (e.g., specific birthdates), and a final answer not grounded in verified evidence.
+
+1) Error Signatures
+- Replanning signals during stalled but solvable subtasks:
+  - Phrases: “Stalled… Replanning…”, “New plan:”, “Replan counter exceeded… Terminating.”
+- Redundant navigation/instructions:
+  - Multiple consecutive steps to “search for list of winners and birthdates,” revisiting the same domains (GoldDerby, Wikipedia, Survivor Wiki) without new data.
+- Page summaries without extraction:
+  - High-level page descriptions instead of extracting the specific requested fields (birthdates).
+- Ledger contradictions/loop flags:
+  - is_in_loop toggling (true/false) across steps without any new facts extracted.
+  - is_progress_being_made marked true while zero new atomic facts are added.
+- Unverified conclusion:
+  - “FINAL ANSWER:” produced from “educated guesses” or speculation rather than verified birthdate checks.
+
+2) Error Context Analysis
+- Typical context:
+  - Single-fact retrieval tasks with a unique answer, where verification is a narrow, tractable step (e.g., check birth month of a small candidate set).
+- Preceding sequence:
+  - Initial sources found → repeated browsing attempts/timeouts → generic summaries → loop detection noted → replan invoked despite pending, simple verification.
+  - Fact sheet updated with speculative “educated guesses,” while concrete verification remains undone.
+- External triggers:
+  - Timeouts or partial loads used as justification to reset the plan rather than pivot to verifying the already-identified candidates.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Are there identifiable candidates already mentioned that could be verified directly?
+  - Have ≥2 consecutive steps repeated the same search/visit instructions without adding new atomic facts (e.g., a specific birthdate)?
+  - Did the agent announce “Replanning” without introducing any new constraints, subgoals, or data?
+  - Is the final or intermediate answer based on speculation rather than verified extraction?
+- Analytical framework:
+  - Fact-delta check: Over the last N steps, did the number of concrete facts (e.g., named winner + birthdate) remain at zero? If yes + replan occurs, flag.
+  - Loop-pattern check: Detect semantically equivalent instructions (same query/URLs) repeated ≥2 cycles without new extracted fields.
+  - Verification-opportunity check: If a candidate list is present and the next logical micro-step is “verify attribute X,” but the agent replans instead, flag.
+- Key phrases/pattern indicators:
+  - “Stalled… Replanning…”, “New plan:”, “Updated Fact Sheet,” repeated “Please visit GoldDerby/Wikipedia/Survivor Wiki…”
+  - Ledger lines showing “is_in_loop: true” followed by “is_in_loop: false” absent new facts.
+  - Summaries like “The page provides a comprehensive gallery…” without any extracted birthdates.
+  - “FINAL ANSWER:” appearing after cycles of replanning and without explicit verification steps logged.
+
+==================================================
+
+=== Schema for Error Log 10 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 9
+Reason for Mistake: Premature criteria switching and false completion claim. The Orchestrator asserted that a “list of supermarkets within 2 blocks” was found based only on a generic search results page. WebSurfer had not provided a verified, complete, distance-checked list. This led the Orchestrator to advance to price verification before the location constraint and completeness were established.
+
+1) Error Signatures
+- Ledger/state updates declare a subgoal “complete” without the upstream agent providing explicit, verified outputs (e.g., “a list within 2 blocks has been found”).
+- Transition from one constraint to another (e.g., price) while earlier constraints (e.g., proximity, completeness) are only loosely supported by SERP snippets.
+- Reliance on search result cards/snippets with mixed sources (Tripadvisor, Facebook, generic maps) as if they were authoritative and exhaustive.
+- No explicit enumeration of candidates with addresses and distance validation, yet language claims sufficiency (“identified”, “list has been found”).
+- Inclusion of entities obviously outside the constraint scope (e.g., far-away addresses) without acknowledgment, while still claiming the constraint is met.
+
+2) Error Context Analysis
+- The preceding step is a broad web search returning a partial, mixed-source SERP rather than a curated/validated list.
+- The user request has multiple constraints (geographic + price), and the Orchestrator jumps to the next constraint after a single exploratory lookup.
+- Absence of explicit confirmation from WebSurfer that the list is complete or within the exact distance boundary.
+- Orchestrator’s ledger/reasoning emphasizes progress and next steps despite missing verification artifacts (addresses, distances, coverage).
+- The conversation contains planning language about boundaries but no concrete mapping/measurement step tying candidates to “within 2 blocks.”
+
+3) Detection Heuristics
+- Questions to ask:
+  - Did the upstream agent provide a clearly enumerated list with names, addresses, and evidence that each is within 2 blocks?
+  - Is there an explicit statement of completeness/coverage from the data-gathering agent?
+  - Are any listed examples obviously outside the stated boundary or lacking distance confirmation?
+  - Is the Orchestrator claiming “found a list” or “identified X” without supporting details in the prior message?
+- Analytical framework:
+  - Constraint-gating check: For each user constraint (e.g., proximity, completeness), verify presence of concrete evidence before moving to the next constraint. Evidence should include enumeration + validation (source + metric).
+  - Source adequacy check: Distinguish exploratory SERP snippets from vetted lists/maps with measurements; flag transitions based on the former.
+- Key phrases/patterns indicating the error:
+  - “A list has been found” / “We have identified [items] within [constraint]” immediately after a SERP view.
+  - “Next step is to verify prices” while the prior message lacks distance proofs or completeness claims.
+  - Use of vague qualifiers (“near”, “some supermarkets”) upgraded to definitive claims (“within 2 blocks”, “list”) without evidence.
+  - Ledger reasons stating a constraint is satisfied or nearly satisfied without an accompanying itemized, validated set.
+
+==================================================
+
+=== Schema for Error Log 11 ===
+Generated Schema:
+Agent Name: Websurfer
+Step Number: 24
+Reason for Mistake: The agent treated a list page with accordion-style entries as static content and relied on scrolling and external searches instead of expanding the on-page tabs to reveal the full text (rhyme). This led to missing the directly available information behind clickable/expandable UI elements.
+
+1. Error Signatures:
+- Repeated “scroll down” actions without extracting the needed text.
+- Presence of carets/triangles (e.g., ▽, ᐱ) or “expand” indicators in OCR/viewport, but no corresponding clicks.
+- Agent summaries list only item titles or years, not the full body content (e.g., epitaph/rhyme).
+- Pivot to indirect methods (image reading, external articles) despite the target site likely containing the answer.
+- Generic page descriptions instead of quoting specific lines requested by the task.
+- Attempts to read text from background images/photos rather than using the structured content on the page.
+
+2. Error Context Analysis:
+- Context: Sites with accordion/collapsible components or tabs where details are hidden by default.
+- The task requests a specific line nested under an item (e.g., a rhyme under a flavor), implying content is not visible in the collapsed state.
+- Preceded by: Initial page load → multiple scrolls → identification of item titles → failure to click/expand → escalating to search engines or image OCR.
+- Visual cues present: UI icons for expand/collapse (chevrons/triangles), partial previews (title + years) without body text.
+
+3. Detection Heuristics:
+- Questions to ask:
+  - Are there chevrons/carets or “expand” toggles next to each list item?
+  - Did the agent perform clicks on the item or its caret to reveal hidden content?
+  - Is the agent quoting only titles/years instead of the detailed text asked for?
+  - Is the agent switching to image analysis or external sources while the primary page likely contains the details?
+- Analytical framework:
+  - UI-interaction coverage check: identify interactive controls → verify at least one expand/collapse action → confirm retrieval of the detailed field (e.g., rhyme last line).
+  - Direct-access vs. indirect-access check: If content is likely on-page, flag when the agent uses off-site searches or image reading first.
+- Key indicators in conversation:
+  - Repetitive “scroll further” instructions/responses.
+  - OCR logs showing ▽/ᐱ or “expand” but no click actions on them.
+  - Phrases like “not visible,” “can’t find,” “look at the photo,” “enhance image,” “search externally,” without any attempt to expand on-page items.
+  - Absence of the specific requested text (e.g., last line) despite multiple passes over the item list.
+
+==================================================
+
+=== Schema for Error Log 12 ===
+Generated Schema:
+Agent Name: Assistant
+Step Number: 16
+Reason for Mistake: The assistant constructed the “top 10 domestic” list using an incorrect or mismatched source/context (likely the worldwide page sorted by domestic or memory), resulting in a substitution error: omitting “Demon Slayer: Kimetsu no Yaiba - The Movie: Mugen Train” and including “Wonder Woman 1984.” This led to an incorrect intersection count.
+
+1) Error Signatures
+- The assistant presents an enumerated “Top 10 Domestic” list without citing or linking the specific Box Office Mojo domestic 2020 page.
+- Inclusion of a title known not to be in the domestic top 10 for 2020 (e.g., “Wonder Woman 1984”) and omission of a known high-ranking domestic title (e.g., “Demon Slayer: Mugen Train”).
+- The intersection list excludes a title that is clearly in the worldwide top 10 and plausibly in domestic top 10 based on earlier retrieved data.
+- The browsing context shows a “world” endpoint with a domestic sort parameter (e.g., year/world/2020/?sort=domesticGrossToDate) instead of the dedicated domestic endpoint, while the assistant claims a domestic top 10.
+- Confident “Here are the top 10…” phrasing followed by items not visible on the retrieved page(s) in the conversation history.
+
+2) Error Context Analysis
+- Preceded by partial data retrieval: the worldwide list is correctly fetched; the domestic list is not explicitly fetched from its dedicated “Domestic 2020” page.
+- WebSurfer interaction indicates sorting the worldwide table by domestic gross instead of navigating to the domestic list page.
+- The assistant proceeds to compare based on a hand-compiled domestic list, potentially from memory or mixed sources.
+- The task requires exact top-k list comparison from a specified source, increasing sensitivity to small inclusion/exclusion mistakes.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Did the assistant provide the domestic list sourced from the specific Box Office Mojo “Domestic 2020” page? Is there a link or explicit citation?
+  - Does the assistant’s domestic list contain “Demon Slayer: Mugen Train”? Does it include “Wonder Woman 1984”? If yes to the latter and no to the former, flag the error.
+  - Are all listed domestic titles’ grosses plausibly within the 2020 top 10 threshold compared to known figures on the source page?
+  - Is there evidence the assistant used a sorted worldwide page instead of the actual domestic page?
+- Analytical framework:
+  - Source-consistency check: Verify that both lists originate from the correct Box Office Mojo endpoints (worldwide vs domestic) for the same year.
+  - Title-by-title alignment: Cross-compare assistant-listed titles against the visible titles in the retrieved pages within the conversation.
+  - Top-k boundary validation: Look for swapped items near the 10th-place cutoff; substitutions are common at the boundary.
+  - Intersection sanity check: Recompute overlap from the retrieved lists; any mismatch with the assistant’s overlap list signals an error.
+- Key indicators in conversation:
+  - Phrases like “Here are the top 10 domestic…” without accompanying domestic page evidence.
+  - URL/context mentions of “year/world/2020” plus “sort=domestic” used as a proxy for the domestic list.
+  - Presence of franchise/popular titles that are intuitively familiar but don’t match the source’s rankings (e.g., “Wonder Woman 1984” in 2020 domestic top 10).
+  - Omission of regionally strong titles that appear in the worldwide list and are known to have significant U.S. grosses (e.g., “Demon Slayer: Mugen Train”).
+
+==================================================
+
+=== Schema for Error Log 13 ===
+Generated Schema:
+Agent Name: Websurfer
+Step Number: 12
+Reason for Mistake: The agent interacted with a form (typed location) but did not successfully submit/navigate to the results page. Evidence shows no state transition (URL and page content remained unchanged), leading to repeated views of the same form and OCR output. This indicates a “non-submission/unchanged-state” error typical of stalled web interactions.
+
+- Error Signatures:
+  - Consecutive steps show the exact same URL/page title after claimed actions (e.g., no query parameters, no station/date-specific path).
+  - OCR/text snapshots remain essentially identical across steps (e.g., still shows the initial “Historical Weather” form with “Location:” and default date).
+  - Agent claims actions like “typed …” or “clicked ‘View’” but screenshots and URLs indicate no navigation occurred.
+  - Repeated clicks on the same control (e.g., “Month Selection”) without any new content (no tables/charts/results).
+  - Absence of expected result elements (e.g., daily table, “History for [Station]”, “Download Data”, station IDs, or date parameters in the URL).
+
+- Error Context Analysis:
+  - Occurs on sites requiring explicit form submission or selection from autocomplete before a results page loads.
+  - Typically follows a sequence: enter text into a field → claim to click a button → subsequent screenshots show unchanged form page.
+  - Often accompanied by orchestrator notes about being “stuck” or “in a loop,” with repeated instructions to proceed or switch sources.
+  - May include attempts to switch websites in instructions, but the agent remains on the same page/domain.
+
+- Detection Heuristics:
+  - Ask:
+    - Did the URL change after the reported action? Are there new query parameters or a different path?
+    - Does the new screenshot show materially different content (e.g., result tables) versus the initial form?
+    - Is there evidence of a submitted selection (e.g., chosen autocomplete item, station code visible)?
+    - Are multiple steps showing identical OCR fragments (e.g., the same “Location:” form and default date)?
+  - Analytical framework:
+    - Compare successive URLs and page titles; flag when unchanged across 2+ action steps.
+    - Diff OCR/text content across steps; low change indicates likely non-submission.
+    - Look for result-page tokens (e.g., “Daily Observations,” “Download,” station IDs) vs. form-page tokens (“Select Date Range,” “Search Guide”).
+    - Action–Outcome consistency check: claimed clicks (e.g., “View”) should correlate with a navigated results page; if not, flag.
+    - Loop detector: repeated interactions with the same control (“Month Selection”) without state change in 2–3 steps.
+  - Key phrases/patterns indicating the error:
+    - “I typed ‘[location]’” followed by same form page.
+    - “I clicked ‘View’” but URL unchanged and still shows initial form.
+    - “clicked ‘Month Selection’” repeated across steps with identical screenshots.
+    - “Here is a screenshot of [same URL]” repeated.
+    - Orchestrator notes: “stalled,” “replanning,” “in a loop,” “no progress.”
+
+==================================================
+
+=== Schema for Error Log 14 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 14
+Reason for Mistake: Natural-language condition was mistranslated into code logic. The phrase “that don't live on Dream Island or have beaks longer than 42mm” was implemented with a boolean OR (|) where the task intent required a restrictive subset (effectively an AND). This produced an inflated filtered count. The code also implicitly included rows with missing bill lengths due to the OR with a broadly true condition (island != 'Dream').
+
+1) Error Signatures
+- Code uses a boolean OR (|) to combine multiple attribute filters derived from a single restrictive clause (e.g., subset “that … or …”).
+- One clause in the OR is very broad (e.g., island != 'Dream'), causing most rows to pass regardless of the second clause.
+- Filtered count is unusually close to the total row count (e.g., >70–80% of the dataset) for a query that sounds restrictive.
+- Presence of negation plus OR in code (e.g., (df['island'] != 'Dream') | (df['bill_length_mm'] > 42)).
+- NaN-sensitive comparison on one condition paired with OR allows NaN rows to be included because the other clause evaluates True.
+
+2) Error Context Analysis
+- Occurs when translating natural-language filters with “or” and negation into pandas boolean logic.
+- Typically follows a step where the agent paraphrases the user’s clause directly into code without disambiguating logical intent.
+- Preceded by summarizing the condition in the same ambiguous wording (“do not live on X or have Y”), then directly mapping to | in code.
+- Appears in tasks where the dataset is imbalanced for one condition (e.g., many non-Dream rows), making OR dominate selection.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Does any single clause of the OR include a large majority of rows by itself?
+  - Is the filtered count unexpectedly high given the restrictive-sounding natural language?
+  - Are there negations (“don’t”, “not”) paired with “or” in the user instruction?
+  - Are NaNs present in compared columns, and could OR with another true condition be letting them through?
+- Analytical framework:
+  - Compute counts for each clause separately, their intersection (AND), and their union (OR). If union ≈ total but intersection is much smaller, flag a likely logic-mapping error.
+  - Build a 2x2 contingency (condition A true/false vs condition B true/false) to see whether OR makes one condition effectively redundant.
+- Indicator phrases/patterns:
+  - Natural-language: “that don’t … or have …”, “either … or …” within a restrictive clause.
+  - Code: use of | with a negated, broad condition (e.g., != 'Dream') and a threshold comparison.
+  - Output pattern: “Filtered penguins:” count close to total rows immediately after such code.
+
+==================================================
+
+=== Schema for Error Log 15 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent drifted from sourcing a comprehensive, authoritative list on the official site to relying on non-authoritative/third-party content, and failed to ensure constraints (e.g., $0 transaction fee, full fund universe) were being applied. Similar errors can be identified when the agent cites editorial articles or incomplete third-party lists instead of using the official screener or fund list required by the task.
+
+1) Error Signatures
+- Source-authority drift:
+  - Opens or cites third-party editorial sites (e.g., Kiplinger, Forbes, blogs) instead of the official provider domain (fidelity.com) for canonical lists.
+- Incomplete coverage:
+  - Focus on a single fund page or a “Top X funds” article; no evidence of a complete fund universe or list filtered by criteria.
+- Constraint omission:
+  - No visible application or confirmation of required filters (e.g., “No Transaction Fee,” “International,” “Emerging Markets”) on the data source.
+- SERP looping:
+  - Repeated returns to search results without extracting a concrete list; clicking general articles over official tools.
+- Vague summaries:
+  - Summarizes page content without listing the requested set of items or confirming that constraints were applied.
+
+2) Error Context Analysis
+- Typical context:
+  - Task requires an authoritative, filtered list from a specific provider’s ecosystem (e.g., Fidelity’s screener) plus time-bounded performance data.
+- Preceding interaction pattern:
+  - Initial search identifies an individual fund page.
+  - Subsequent steps jump to third-party “best/exciting funds” listicles.
+  - Lack of explicit application of transaction-fee and category filters.
+  - Multiple instructions from orchestrator to find an “official resource” precede continued third-party browsing or incomplete data capture.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Is the current source the official domain responsible for the dataset (fidelity.com) rather than a media/magazine site?
+  - Does the page show filter chips or criteria (e.g., No Transaction Fee, International Equity, Emerging Markets) actively applied?
+  - Is there a complete list of relevant funds, or only a spotlight on one fund or a non-exhaustive “Top X” list?
+  - Is the agent providing explicit fund names/tickers that match the filtered universe?
+- Analytical framework:
+  - Source Authority Check: official vs. third-party.
+  - Coverage Completeness Check: exhaustive list vs. editorial selection.
+  - Constraint Application Check: required filters visibly applied and acknowledged.
+  - Data Relevance Check: presence of time-bounded performance needed for the question.
+  - Navigation Path Check: SERP → official tool/list vs. SERP → editorial article.
+- Key indicators/phrases:
+  - “Top/Best/Exciting funds,” “to buy,” or listicle framing.
+  - References to media brands (Kiplinger, Forbes, InvestorPlace, Motley Fool) instead of fidelity.com/fundresearch.
+  - Repeated “continue searching/scrolling” without listing funds or showing applied filters.
+  - Single-fund deep dives without returning to a filtered results list.
+
+==================================================
+
+=== Schema for Error Log 16 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 15
+Reason for Mistake: Premature progression to the next constraint (availability) without fully exploring and applying on-page filtering/navigation for the prior constraint (runtime < 2 hours). The Orchestrator ignored clear UI cues from OCR (e.g., “Search filters,” “Expand all,” “1–50 of …”) and did not instruct scrolling or filter use, resulting in an incomplete candidate set and a wrong final selection.
+
+1) Error Signatures
+- UI affordances present but unused:
+  - OCR shows phrases like “Search filters,” “Expand all,” “Sort by,” “1–50 of,” “Load more,” but no subsequent scroll/filter actions are issued.
+- Low viewport coverage:
+  - Repeated metadata such as “viewport shows X% of the webpage” (small percentage) and “positioned at the top” with no scroll commands.
+- Premature constraint shift:
+  - The agent starts checking availability on external sites before confirming the runtime constraint.
+- Narrow, top-heavy sampling:
+  - Only the first few visible items are considered; no indication of exploring beyond the initial screen.
+- Constraint mentioned but not operationalized:
+  - The requirement “less than 2 hours” is restated in thoughts but not acted on via visible filter usage or comprehensive runtime verification.
+
+2) Error Context Analysis
+- Typical conditions:
+  - Multi-constraint tasks (rating, runtime, availability) that require sequential narrowing.
+  - Pages with advanced search/filter UIs (IMDb Advanced Search) where the OCR reveals filter controls.
+- Preceding sequence:
+  - Agent finds a results page, acknowledges constraints in thoughts, but transitions to availability checks.
+  - No explicit instruction to scroll, expand filters, or apply runtime/keyword filters despite OCR cues.
+  - Evidence of limited exploration (e.g., “1–50 of 54” appears but only 1–2 titles are acted upon).
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Do screenshots/OCR show “Search filters,” “Expand all,” “1–50 of,” or “Load more” without subsequent scroll/filter actions?
+  - Was availability checked before runtime filtering was verified/applied?
+  - Is viewport coverage consistently low with no scroll events between steps?
+  - Are only the topmost items considered despite the page indicating many results?
+- Analytical framework:
+  - Constraint-to-Action Mapping: For each constraint (rating, runtime, availability), check for explicit action evidence (scroll, apply filter, verify runtime). Flag if a downstream constraint is acted on while an upstream one lacks action evidence.
+- Key indicators/phrases:
+  - Presence: “Search filters,” “Expand all,” “Sort by User rating,” “1–50 of,” “Load more,” “Runtime,” “Duration,” “min,” “h m.”
+  - Absence: Instructions including “scroll,” “expand,” “apply filter,” “set runtime/duration,” “show more,” before queries like “check availability.”
+  - Premature shift language: “Please check availability of…” immediately after the first results view, without confirming “under 2 hours” via filtering or full list review.
+
+==================================================
+
+=== Schema for Error Log 17 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent issued an overly generic, natural-language search query and then relied on unstructured aggregator results (e.g., TripAdvisor snippets) rather than invoking a geospatial listing with filters. As a result, it failed to produce a distance-sorted candidate list with Wednesday 11pm hours, triggering a drift into checking a few arbitrary eateries individually without validating both constraints (distance and time).
+
+1) Error Signatures
+- Query pattern: Long natural-language string with multiple constraints appended (e.g., “eateries near [address] open at 11pm on Wednesdays”) without invoking map/filter tools.
+- Result pattern: SERP shows “About X results,” TripAdvisor/Yelp listicles, and blurbs like “Good for [dish]” instead of a map-centric list with distance and hours filters.
+- Behavior pattern: Immediate clicking into individual restaurant pages one-by-one; no compiled list; no explicit mention of “sorted by distance.”
+- Data omission: No distances stated (miles/time) from the target location; hours shown for a single venue but not cross-compared; “Open · Closes …” presented without Wednesday-specific verification.
+- UI cues ignored: “View on Larger Map” visible but not followed by a map/filter interaction or a structured list output.
+
+2) Error Context Analysis
+- Typical context: Tasks requiring simultaneous satisfaction of proximity and temporal constraints (nearest + open at specific day/time).
+- Preceding sequence: Address/location established; first discovery query performed; agent remains within general web search results instead of transitioning to a mapping interface with filters.
+- Common progression: From generic SERP → click a few nearby restaurants → piecemeal hours checking → no confirmation of distance ranking or Wednesday 11pm criteria across a candidate set.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Is there a consolidated list of candidates that explicitly includes both distance from the target and Wednesday-at-11pm open status?
+  - Did the agent state or demonstrate sorting by distance?
+  - Are hours validated specifically for Wednesday at 11pm, rather than just “Open now” or a generic close time?
+  - Are sources/tools used capable of filtering by hours and measuring distance (e.g., map listings), or is the agent relying on listicles/reviews?
+- Analytical framework:
+  - Constraint-matrix check: For each candidate, are both columns (Distance, Wed 11pm Open) populated? If either column is missing for the set, flag the error.
+  - Source-mode check: SERP/aggregator mode vs. map/filter mode; staying in SERP/aggregator mode signals risk of this error.
+  - Step-intent alignment: If the plan calls for “list sorted by distance and operating hours,” verify the output exhibits explicit sorting and both data fields; otherwise mark as error.
+- Key indicators/phrases:
+  - “About X results,” “THE 10 BEST Restaurants Near…,” “Good for [dish],” “Tripadvisor,” “View on Larger Map” (without subsequent map/filter usage).
+  - “Open · Closes …” without specifying Wednesday context.
+  - Sequential “I clicked [restaurant]” actions without prior list compilation or sorting.
+
+==================================================
+
+=== Schema for Error Log 18 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 16
+Reason for Mistake: Prematurely inferring “no membership information” due to shallow/ineffective navigation. The agent cycled between the homepage and unrelated event pages without clicking the clearly visible “MEMBERSHIP” nav item, did not scroll or use site search, and provided no direct citations, URLs, or quotes to substantiate the absence claim.
+
+1) Error Signatures
+- Agent asserts or implies information is unavailable without evidentiary support (no quotes, no membership URL, no screenshots of a membership page or 404).
+- Visible, relevant navigation element (e.g., “MEMBERSHIP”) appears in screenshots/OCR but is never clicked.
+- Vague action logs (e.g., “I clicked the control”) and repeated returns to the same root URL.
+- Repeated instructions from the orchestrator to visit the Membership section; ledger flags “is_in_loop: true,” “is_progress_being_made: false.”
+- Detours to event/special ticket pages rather than membership pages.
+- No concrete membership pricing surfaced; reliance on non-source snippets or unrelated content.
+
+2) Error Context Analysis
+- Task requires two data points (daily tickets + membership), but only one is obtained; agent is stuck acquiring the second.
+- Site top nav shows “MEMBERSHIP” in OCR/screenshot; homepage promotions/events may distract navigation.
+- Typical sequence: search -> homepage -> event ticketing -> homepage -> repeated attempts -> orchestrator “stalled/replanning.”
+- Orchestrator logs show repeated prompts to navigate to “Membership” with no change in URL/state/content.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Did the agent click the obvious “MEMBERSHIP” nav item when it was on-screen?
+  - Is there a direct membership URL (e.g., /membership/, /join/), quoted pricing, or screenshot evidence?
+  - Have there been 2+ prompts to visit “Membership” without any new content or URL transition?
+  - Did the agent claim unavailability without scrolling, using site search, or showing a “no results”/404?
+- Analytical framework:
+  - Evidence-of-absence vs absence-of-evidence: flag any “not available” claim lacking at least two probes (menu click + site search).
+  - URL/state transition check: confirm navigation to a membership-specific path and content change.
+  - Content keyword check: look for “Membership,” “Join,” “Member benefits,” “Pricing,” “Annual pass.”
+- Key indicators/phrases:
+  - “There is no membership information,” “couldn’t find,” “not available” without citation.
+  - Vague navigation logs (“I clicked the control”) and unchanged root URL.
+  - Orchestrator notes: “stalled,” “replanning,” “is_in_loop: true,” “is_progress_being_made: false.”
+
+==================================================
+
+=== Schema for Error Log 19 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 50
+Reason for Mistake:
+- Summary: Premature replanning/interrupting an in-progress UI sequence. The Orchestrator declared a stall and initiated a replan while the WebSurfer had just exposed the needed UI control (year filter) and was awaiting/poised to perform the next micro-action (click “2020”). This caused loss of momentum and duplicated planning without leveraging the current page state.
+
+- Error Signatures:
+  - “Stalled… Replanning…” or similar appears immediately after WebSurfer performs a micro-action (e.g., “clicked ‘Select Year:’”) that reveals next-step controls.
+  - Ledger shows next_speaker = WebSurfer with a specific UI instruction pending, yet the Orchestrator interrupts with a replan before any follow-up click/selection occurs.
+  - Repeated re-issuance of the same instruction (e.g., “Please select the year 2020…”) without acknowledging the intermediate UI state (dropdown open/options visible).
+  - Rapid toggling of is_progress_being_made or is_in_loop within 1–2 steps despite visible UI progress in screenshots/OCR.
+
+- Error Context Analysis:
+  - Typical context: Multi-step UI workflows (filters, dropdowns, pagination) where actions must occur in quick succession (open control → select option → load results).
+  - Preceded by WebSurfer revealing actionable UI state (OCR shows options like “2024 2023 2022 2021 2020”) but not yet making the final selection.
+  - Sequence pattern: Orchestrator instructs WebSurfer to filter/select → WebSurfer opens/activates control → Orchestrator prematurely judges “stalled/loop” and replans instead of allowing the next click.
+
+- Detection Heuristics:
+  - Questions to ask:
+    - Did the last WebSurfer step expose a control that obviously requires a follow-up click/selection, and has that follow-up occurred?
+    - Is the Orchestrator declaring “stalled/loop” or triggering a replan within one turn of assigning a micro-action to WebSurfer?
+    - Does the ledger still indicate next_speaker = WebSurfer (or a pending WebSurfer action) when replanning occurs?
+  - Analytical framework:
+    - Pending-Action Check: Compare last UI state (e.g., dropdown open) vs. expected next action; flag replans before the expected click is attempted.
+    - Turn-Latency Threshold: Require at least one additional WebSurfer turn after controls are revealed before labeling as “stalled.”
+    - State-Consistency Audit: Detect contradictions where visible page state shows progress but the ledger/reasoning claims “no progress” or “loop.”
+  - Key phrases/patterns:
+    - “Stalled… Replanning…”, “Replanning…” immediately after messages like “clicked ‘Select Year:’” or “options visible.”
+    - “Next speaker WebSurfer” followed by a replan with no intervening WebSurfer action/result.
+    - Repeated instructions to perform the same filter/select action without a confirmation step (e.g., “clicked ‘2020’” or loaded 2020 results).
+    - Ledger contradictions: is_progress_being_made = true while reason states “stuck/loop,” or rapid flip-flops of is_in_loop.
+
+==================================================
+
+=== Schema for Error Log 20 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 3
+Reason for Mistake: Inability to reliably access and extract content from the required documents led to repeated navigation without data capture. The following template focuses on identifying this error pattern early.
+
+1) Error Signatures
+- Repeated navigation actions without concrete data extraction (e.g., “clicked ‘PDF’”, “opened page”, but no quoted values).
+- “Nothing to summarize” responses after requests to parse a PDF or page.
+- Empty or minimal page OCR summaries (e.g., only an ID like “2103.07786” with no content).
+- Recurring 404/file-not-found messages or local file paths (file:///workspace/...) that don’t resolve.
+- Multiple instructions to “ensure the PDF is fully downloaded” without subsequent evidence of successful parsing.
+- Switching to alternative sources (e.g., journal site) when the target (arXiv) was specified, with no confirmation of author overlap or relevant figure/diagram presence.
+- Absence of specific numeric outputs (e.g., no “seconds” values, no figure references) despite repeated attempts.
+- Ledger/status notes indicating “is_in_loop: true” or “stalled… replanning” with no new extracted facts.
+
+2) Error Context Analysis
+- Tasks requiring extraction of specific numeric details from figures in academic PDFs.
+- Ambiguous cross-paper linkage (e.g., “one of the same authors”) leading to selection of a thematically similar but author-mismatched paper.
+- Technical barriers: PDF rendering limitations, paywalls/alternate hosts, content filtering, or site variants (export.arxiv vs arxiv.org).
+- Sequence typically includes: initial search hit → open abstract page → attempt PDF → empty/unsupported PDF view → repeated “download/ensure PDF” cycles → fallback to other sites → still no numeric data → loop flags or replanning messages.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Did the agent produce exact time-span numbers from both papers and cite figure/table identifiers?
+  - Are both target papers correctly identified by date and overlapping author(s)?
+  - Is there evidence of successful PDF parsing (quoted captions/axes/units) rather than just navigation logs?
+- Analytical framework:
+  - Trace for first successful data extraction event; if none after N navigation steps, flag as access/extraction failure.
+  - Check for loop indicators: repeated “ensure/download/open PDF” commands without new facts; recurring 404 or “Nothing to summarize”.
+  - Validate source alignment: paper dates and author overlap explicitly confirmed before extraction.
+- Key phrases/patterns indicating the error:
+  - “Nothing to summarize”
+  - “Error 404” / “File not found” / “file:///workspace/…”
+  - “Ensure that the PDF is fully downloaded”
+  - “Viewport shows 100% of the webpage” with no content details
+  - Repeated “clicked ‘PDF’” without subsequent numeric output
+  - “Stalled… Replanning” / “is_in_loop: true”
+  - Final answer given without any prior quoted measurements or citations
+
+==================================================
+
+=== Schema for Error Log 21 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 4
+Reason for Mistake: The agent remained on the news article and entered a scroll/search loop instead of opening the linked paper where the acknowledgment section resides. This led to a navigation/extraction stall: no transition to the PDF/DOI page, no in-document search for “Acknowledgments,” and no verbatim citation. The stall culminates in a premature, plausibly formatted NASA award number without evidence.
+
+Error Signatures:
+- Repeated instructions/actions like “scroll down,” “continue scrolling,” “find the link at the bottom,” with viewport percentage changes but no new source opened.
+- Absence of a paper URL (arXiv/DOI/Journal) or PDF viewer in the logs; continued presence on the news site.
+- No quoted text from “Acknowledgments/Funding/Support” sections; no mention of the page/section where R. G. Arendt appears.
+- Vague progress reports: “making progress,” “still looking,” “not yet found,” without concrete extraction.
+- Final answer is a plausible NASA grant format (e.g., 80NSSC…/80GSFC…) presented without citation or source reference.
+- Abrupt termination or unrelated error (e.g., content filter) followed by a final answer with no supporting evidence.
+
+Error Context Analysis:
+- Task requires a specific field only present in the linked paper (not the news article).
+- Preceded by: web search → news article open → repeated scrolling within the article → keyword searches inside the article rather than the paper.
+- Environmental friction: long article pages, ad/pop-up overlays, newsletter prompts, or slow page loads that keep the agent on the article.
+- Orchestrator prompts emphasize “bottom of the article” rather than “open the paper,” reinforcing the loop.
+
+Detection Heuristics:
+- Verification questions:
+  - Has the agent opened a paper/PDF/DOI page distinct from the news article?
+  - Is there a direct quote from the “Acknowledgments/Funding” section mentioning R. G. Arendt?
+  - Is a source URL cited that points to the paper (not the news site)?
+- Analytical checklist:
+  - Source transition confirmed (article → paper)?
+  - Target section located (“Acknowledgments” visible)?
+  - Field extraction includes exact phrasing and citation?
+- Indicator phrases/patterns:
+  - Looping: “continue scrolling,” “find link at the bottom,” “not yet found,” “we are making progress.”
+  - Missing evidence: answers with grant-like strings (e.g., “80NSSC…”, “80GSFC…”) without a quoted acknowledgment.
+  - Navigation-only telemetry: repeated viewport percentages, no mention of “PDF,” “arXiv,” “DOI,” or “Acknowledgments.”
+
+==================================================
+
+=== Schema for Error Log 22 ===
+Generated Schema:
+Agent Name: FileSurfer
+Step Number: 4
+Reason for Mistake: The agent attempted to access a non-existent local file instead of a valid remote source, returning 404 errors and triggering a premature, unsupported final answer. Similar errors can be identified by the following patterns.
+
+- Error Signatures:
+  - Repeated 4xx messages, especially “Error 404” and “File not found,” referencing local paths (e.g., Address: file:///workspace/..., /workspace/76.pdf).
+  - Attempts to open a “downloaded PDF” without prior evidence of a successful download step or stored path.
+  - Rapid retry of the same failing local path with no path variation.
+  - Downstream abrupt “FINAL ANSWER” or guess posted without extracted citations or quoted evidence.
+  - Logs show capability mismatch: FileSurfer invoked for a web-hosted document that was not locally saved.
+  - Occasional unrelated API/content-filter errors appearing immediately after file failures (noise spike preceding a guess).
+
+- Error Context Analysis:
+  - Cross-agent handoff where WebSurfer accessed a valid remote PDF/URL, then Orchestrator instructs FileSurfer to open a “downloaded” version to bypass UI issues.
+  - No preceding step that explicitly downloads the file or records a local file path; yet FileSurfer is tasked to open it.
+  - Sequence often includes: successful web discovery -> “loop” concern -> switch to FileSurfer -> local 404 -> repeated 404 -> unsupported final guess.
+  - Absence of verbatim text extraction steps right before the final answer.
+
+- Detection Heuristics:
+  - Verification questions:
+    - Was a download step executed and a local path captured before FileSurfer was asked to open the file?
+    - Is the agent referencing file:/// paths without prior evidence of file creation?
+    - Did any 4xx (404) “File not found” occur immediately before an asserted final answer?
+    - Is the final answer devoid of direct quotes or page-referenced evidence despite a document-centric task?
+  - Analytical framework:
+    - Chain-of-evidence check: For document-based answers, require a preceding “access -> parse -> extract -> cite” chain. Flag when “access” fails yet “answer” is produced.
+    - Cross-agent state alignment: Compare WebSurfer’s state (URL opened) with FileSurfer’s assumed state (local file present). Flag mismatches.
+    - Precondition verification: Before file-open actions, confirm existence of the file and its exact path.
+  - Key indicators/phrases:
+    - “Error 404,” “File not found,” “Address: file:///workspace/...”
+    - “Open the downloaded PDF” with no prior “Downloaded to …”
+    - “Unable to open,” “not found,” followed by “FINAL ANSWER”
+    - Guesses framed as “likely,” “probably,” or answers that mirror article titles rather than content quotes.
+
+==================================================
+
+=== Schema for Error Log 23 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake:
+- Error Signatures:
+  - Navigation-only updates (e.g., “clicked,” “typed,” “opened”) without any concrete rates or numeric prices.
+  - Screens/pages shown are gates or generic (e.g., “Choose your location,” cookie banners, “Page Not Found,” search results) rather than rate/result pages.
+  - Metadata dumps (jsonld, meta tags) or OCR text without actionable shipping data.
+  - Mismatch between instructed target (e.g., DHL) and the site being used (e.g., FedEx).
+  - No extraction or summary of shipping options, services, or costs after multiple steps.
+
+- Error Context Analysis:
+  - Occurs during multi-step web lookups that require form completion (origin, destination, weight/dimensions).
+  - Often preceded by a switch in carrier focus (asked to do DHL but agent continues on FedEx) or repeated attempts on the wrong page.
+  - The agent gets stalled on UI gates (cookie consent, geo selector) or landing pages without proceeding to results.
+  - Several turns elapse with only browsing actions and screenshots; no progress toward the numeric answer format (sender + price).
+
+- Detection Heuristics:
+  - Alignment check: Is the current site/carrier the one requested in the last instruction? If not, flag.
+  - Outcome check: Does the last 1–2 WebSurfer messages contain explicit dollar amounts or named service options? If not, flag.
+  - Progress delta check: Have there been 2+ consecutive “click/typed/scroll” actions without reaching a rate/result page? If yes, flag.
+  - Gate-page signal check: Do messages mention “Choose your location,” cookie banners, “Page Not Found,” or generic search results instead of calculator outputs? If yes, flag.
+  - Key phrases/patterns indicating the issue:
+    - “clicked,” “typed,” “back button,” “screenshot shows,” “metadata/jsonld,” “page not found,” “cookie notice,” “choose your location,” “search results,” “See results only from…”
+    - Absent terms: “$”, “USD”, specific service names with prices (e.g., “USPS First‑Class International $X.XX”).
+
+==================================================
+
+=== Schema for Error Log 24 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 1
+Reason for Mistake: Role/case misassignment due to ignoring special verb semantics (“is pleasing to”), leading to inverted subject/object and incorrect case usage; accompanied by overconfident self-validation and internal contradictions between noted facts and constructed output.
+
+1. Error Signatures:
+- Subject/object inversion when the prompt specifies non-canonical alignment (e.g., “is pleasing to”/experiencer-object verbs).
+- Use of accusative form as “subject” or nominative form in the object slot contrary to provided case mappings.
+- Explicit contradiction between the orchestrator’s stated facts and the applied plan (e.g., noting “Pa” is nominative for subject, then ending with “Mato” as subject).
+- Overconfident closure language (“correctly forms,” “request satisfied,” “completed accurately”) despite absence of a role-semantics check.
+- Mechanical V-O-S assembly that treats English-like roles (I=subject, apples=object) even when instructions say the opposite.
+
+2. Error Context Analysis:
+- Tasks involving:
+  - Psych/experiencer verbs or unusual argument structure.
+  - Case-marked languages with explicit nominative/accusative/genitive forms.
+  - Stated word order constraints that interact with role reassignment.
+- Preceded by:
+  - A fact sheet accurately restating rules, followed by a plan that violates those rules.
+  - No consultation/validation step; immediate finalization in the first pass.
+  - Ledger/plan asserting correctness without referencing role-to-case mapping in the final construction.
+
+3. Detection Heuristics:
+- Questions to ask:
+  - Does the verb imply non-canonical alignment (e.g., “is pleasing to”)? If yes, did the output swap roles accordingly?
+  - Do case forms used match the roles they’re labeled as (is anything in accusative being called/used as a subject)?
+  - Does the surface order (V-O-S, etc.) align with the role and case assignments stated in the prompt?
+  - Are there contradictions between the orchestrator’s facts and the final example (e.g., states subject=nominative “Pa” but outputs “Mato”)?
+  - Is there confident completion language without an explicit role/case verification step?
+- Analytical framework:
+  - Predicate-Argument Role Audit: Extract roles (subject/theme/experiencer), map to required cases per prompt, compare to produced forms.
+  - Consistency Crosscheck: Facts → Plan → Output token-by-token (verb form, object case, subject case) alignment.
+  - Case-Order Matrix Check: Expected [Verb(present) | Object=accusative | Subject=nominative] vs. actual tokens.
+- Key indicators/phrases:
+  - Presence of cues like “is pleasing to,” “experiencer,” or “thing doing the liking is the object,” coupled with output treating “I” as nominative subject.
+  - Statements like “End the sentence with the subject ‘Mato’” when “Mato” is documented as accusative.
+  - Use of “Zapple” (accusative) as object when the semantics require “Apple” (nominative) as subject.
+  - Ledger notes: “request satisfied,” “completed accurately,” “no additional task,” immediately after a single-pass construction.
+
+==================================================
+
+=== Schema for Error Log 25 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 18
+Reason for Mistake: Premature task completion. The Orchestrator marked the request as satisfied and produced a final answer before executing or receiving the result of the critical counting step. It also ignored the user’s temporal constraint (“as of the most recent entry from 2022”) and substituted an assumed exact date (“April 20, 2018”) for the requested “release month,” indicating scope and constraint drift.
+
+1) Error Signatures:
+- “Request satisfied” or finalization declared immediately after issuing an instruction that requires a result (e.g., “Please count…”), with no intervening result message.
+- Termination messages like “No agent selected” or “FINAL ANSWER” without evidence of the requested computation.
+- Ledger shows is_request_satisfied = true while outstanding subtask(s) remain (e.g., counting, filtering).
+- Justification cites access or setup actions (“opened revision history”) as proof of completion rather than delivery of the numeric outcome.
+- Use of post-constraint data (e.g., 2024/2025 revisions) when the task specifies an “as of 2022” boundary.
+- Shift from “month” requirement to a specific day without extracting the month from the target page.
+
+2) Error Context Analysis:
+- Multi-step, evidence-based tasks where the final deliverable is a computed count.
+- Sequence typically observed:
+  a) Identify target entity/page.
+  b) Open relevant source (revision history).
+  c) Issue instruction to compute/filter/count.
+  d) Prematurely mark task complete before receiving the count.
+- Constraints present that limit scope (e.g., “as of 2022”) but subsequent actions reference data outside that window.
+- Ambiguity in target scope (e.g., “2019 game” vs. 2018 release honored in 2019) leading to silent assumption without verification.
+
+3) Detection Heuristics:
+- Checklist questions:
+  - Is there a message explicitly reporting the count (e.g., “Total revisions before [release month]: X”)?
+  - Is there an action-result pair for each instruction (every “Please count/filter” has a subsequent result)?
+  - Was the release month actually extracted from the page, or was a date assumed?
+  - Do the revision entries used fall within the required “as of 2022” timeframe?
+- Analytical framework:
+  - Deliverable traceability: Map each user requirement (page identification, release month extraction, time-bounded counting) to a concrete, evidenced step. Flag completion if any mapping is missing.
+  - Temporal consistency check: Compare the dates of data used against the specified cutoff; flag if exceeded.
+  - Intent-result alignment: Scan for future-tense instructions (“Please scroll/count…”) immediately followed by completion/answer; flag as premature.
+- Key indicators/phrases:
+  - “Request satisfied” or “FINAL ANSWER” directly after an instruction like “Please count/scroll/filter…”
+  - “Next speaker: WebSurfer” followed by “No agent selected” or termination.
+  - Justifications such as “We have accessed/opened…” without “We counted/found…”
+  - References to data years beyond the constraint (e.g., 2024/2025) when the user specifies “as of 2022.”
+
+==================================================
+
+=== Schema for Error Log 26 ===
+Generated Schema:
+Agent Name: FileSurfer
+Step Number: 32
+Reason for Mistake: The agent asserted file access/completion without actually extracting or displaying the requested content, then produced a definitive answer unsupported by any evidence from the source.
+
+1) Error Signatures
+- Repeated status-only outputs (e.g., “Download complete,” “Saved file to …,” “Showing page 1 of 1”) with no extracted text or screenshots from the target page/section.
+- Use of placeholder-like file addresses (e.g., file:///workspace/path_to_local_copy_of_the_book) lacking a concrete filename/extension or content preview.
+- No mention or display of the specific location requested (e.g., “page 11,” “second-to-last paragraph,” “endnote”).
+- Sudden jump to a final numeric/date answer (“FINAL ANSWER: …”) with no quoted snippet or citation.
+- Orchestrator/ledger flags indicating being stuck or in a loop while the agent still outputs a final answer.
+- Telltale absence of keywords expected from the target (e.g., no “November,” no date terms) before giving the answer.
+
+2) Error Context Analysis
+- Preceded by failed or partial access attempts on external sites (e.g., “error loading the content” on JSTOR), followed by a switch to local-file handling.
+- Multiple repeated instructions from the orchestrator to “open,” “navigate,” or “extract” specific page/paragraph/endnote, with the agent returning identical status messages.
+- Orchestrator ledger states: is_in_loop = true and/or is_progress_being_made = false before the agent provides a final answer.
+- Presence of system/runtime errors or content filter messages in logs that interrupt normal extraction flow, followed by an unsupported answer.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Did the agent present the actual text/snippet from the specified page/paragraph/endnote?
+  - Is there any verbatim evidence or screenshot from “page 11” and the “second-to-last paragraph”?
+  - Does the file path and viewer output indicate real content (page count, text) rather than generic status?
+  - Are the terms “November” and a specific day shown anywhere prior to the answer?
+- Analytical framework:
+  - Evidence chain check: Action (open/extract) → Artifact (displayed content) → Answer. If the Artifact step is missing, flag error.
+  - Consistency check: Repeated identical tool outputs across multiple steps without new content → likely non-extraction loop.
+  - Provenance check: Answer must reference or be traceable to displayed source; if not, flag as unsupported.
+- Key indicators/phrases:
+  - “Download complete,” “Saved file to,” “You previously visited this page … seconds ago,” “Showing page 1 of 1” repeated without new content.
+  - Generic path: file:///workspace/path_to_local_copy_of_the_book.
+  - Orchestrator notes: “We appear to be in a loop,” “no forward progress.”
+  - “FINAL ANSWER:” provided without preceding extracted content or citation.
+
+==================================================
+
+=== Schema for Error Log 27 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 4
+Reason for Mistake: The agent remained at a superficial browsing layer (search results/landing metadata) and did not access or analyze the full PDF, leading to failure to extract the requested numeric value. Similar errors can be identified by the following patterns.
+
+1) Error Signatures
+- Reliance on SERP/metadata: Mentions like “About X results,” “og:title,” “meta_tags,” “citation_pdf_url,” or abstract snippets without primary-source content.
+- UI-level descriptions without substance: “Viewport shows X%,” “1 of 7,” “Automatic Zoom,” “PDF button,” “Download,” but no extracted text or figures from the PDF body.
+- Absence of target signal: No quote containing units or keywords from the query (e.g., “m^3,” “volume,” “bag”).
+- Vague summaries: Paraphrases the abstract or page description rather than citing the exact value and its context.
+- Repeated page navigation: Clicking links or returning to landing pages without progressing to content extraction.
+
+2) Error Context Analysis
+- Typical context: Task requires a precise numeric from a specific section of a PDF or journal article.
+- Preceding sequence: SERP → article landing page → PDF viewer page mention → no in-document search or content quoting → loop back to landing/SERP.
+- Environmental cues: PDF viewer interface visible but textual content not surfaced; mentions of download actions without subsequent confirmed extraction.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Has the agent provided the exact numeric value with unit and a source excerpt?
+  - Is there evidence of in-document search for domain terms (e.g., “volume,” “m^3,” “bag”)?
+  - Are citations limited to metadata/abstract rather than body text or figures?
+- Analytical framework:
+  - Source Engagement Checklist: Found source? Opened full text? Performed targeted in-document search? Extracted direct quote with units? Referenced section/figure/table?
+- Key indicators/phrases:
+  - “About X results,” “meta_tags,” “og:title,” “citation_pdf_url,” “Abstract,” “PDF,” “View of...,” “Automatic Zoom,” “1 of N,” “Return to Article Details,” “Download Successful” without subsequent content excerpt.
+
+==================================================
+
+=== Schema for Error Log 28 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent accepted a generic search engine results page (SERP) list from a broad query as “nearby wheelchair-accessible bars” without validating proximity to the anchor location or confirmed accessibility, leading to a wrong candidate set (omitting the true closest: For Pete’s Sake).
+
+Error Signatures:
+- Query formulation is broad or generic (e.g., “wheelchair accessible bars near [address]”) and the agent stops at the SERP.
+- SERP shows a “Best match/Rating/Price/Hours” carousel without explicit distances from the anchor location.
+- Results include citywide listicles or aggregator pages (e.g., Drink Philly 2013, Foursquare “best places”) rather than map-based listings.
+- No explicit distance values, directions links, or map clicks; “View on Larger Map” present but not used.
+- Candidate venues span multiple neighborhoods not obviously adjacent to the anchor address.
+- Accessibility not confirmed on venue detail pages; reliance on generic labels or old articles.
+
+Error Context Analysis:
+- Occurs right after locating the anchor address, when asked to find “closest” and “wheelchair accessible.”
+- The agent uses a general web search instead of a mapping service (Google Maps/Yelp) or fails to switch into map mode.
+- Sequence pattern: get address → broad SERP query → accept mixed, citywide results → proceed as if list is localized/validated.
+- Often includes outdated resources or non-authoritative sources; missing the obvious local venue near the anchor.
+
+Detection Heuristics:
+- Questions to ask:
+  - Do the cited results include explicit distances from the anchor or a directions view?
+  - Were results sourced from an actual map listing for the anchor location (pins around the anchor), or from generic SERPs/articles?
+  - Is accessibility verified on the venue’s official/map detail page, or inferred from a listicle?
+  - Are the venues all plausibly within a short walking distance of the anchor (same neighborhood/blocks)?
+- Analytical framework:
+  - Constraint coverage matrix: Proximity evidence? Accessibility evidence? Source authority? If any are “no/unproven” and selection proceeds, flag as wrong-search-result pattern.
+  - Source-type check: Map/directions page with distances vs. generic SERP/listicle. If the latter, flag.
+- Key indicators/phrases:
+  - “About X results,” “Best match,” carousels without distances.
+  - Mentions of listicle/aggregator pages (e.g., “Drink Philly,” “Foursquare best places”) or old timestamps (e.g., 2013).
+  - “I typed ‘…’ into the browser search bar” followed by no map click or distance computation.
+  - Absence of venue pages showing “Directions,” “Distance,” or accessibility attributes.
+
+==================================================
+
+=== Schema for Error Log 29 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 12
+Reason for Mistake: The agent surfaced only generic page headers/metadata/OCR and did not extract or reference the specific requested fact (the year), nor did it show evidence of reaching or inspecting the relevant subsection. The URL/content appeared unchanged after an alleged click, and no progress signal (new keywords, quotes, or numeric candidates) was produced—hence “did not return anything useful.”
+
+1) Error Signatures
+- Output consists mainly of:
+  - Page headers, navigation menus, or generic species descriptions.
+  - Screenshot/OCR dumps and metadata without targeted information.
+  - Phrases like “I clicked the control” with no substantive result or new content.
+- No mention of the key target terms (e.g., “first found,” “west of Texas,” “year,” specific state occurrences).
+- No quoted passage, no numeric year candidates, and no link to a specific subsection or table.
+- URL unchanged or identical to previous step despite a claimed action (click/scroll).
+- Repetition of previously seen content (“USGS science for a changing world,” “NAS - Nonindigenous Aquatic Species”) without new details.
+
+2) Error Context Analysis
+- Task requires a precise fact from a structured/dynamic page (e.g., species profile with tabs/tables like “Collection Info,” “Occurrences,” “Table 1”).
+- Preceded by an instruction to drill into a specific section, yet the response shows only top-of-page content.
+- Occurs after opening a high-level page where the relevant data is likely below the fold or in a tabbed/interactive element.
+- The agent reports an action (click/scroll) but the content snapshot remains at the top and general.
+- No intra-page navigation evidence (no anchor changes, no new parameters, no subsection headings).
+
+3) Detection Heuristics
+- Questions to ask:
+  - Does the response contain the requested fact or any plausible numeric candidates (e.g., a 4-digit year)?
+  - Does it reference or quote the specific section requested (e.g., “Collection Info,” “Occurrences,” “Table 1”)?
+  - Did the URL or visible section identifier change after a claimed click?
+  - Are the query’s constraint terms present (e.g., “west of Texas,” “first found”)?
+- Analytical framework:
+  - Alignment check: Compare user query constraints vs. response content. If constraints or target keywords are absent, flag.
+  - Progress delta check: Did this step introduce new, relevant evidence (keywords, quotes, numbers, subsection titles) compared to the previous step? If not, flag.
+  - Evidence specificity check: Is there a direct citation/quote or a precise subsection reference? If only generic site text is shown, flag.
+- Key phrases/patterns indicating the error:
+  - “I clicked the control” (or similar) with unchanged URL/content.
+  - “The viewport shows X% at the top” followed by only header/identification text.
+  - “That’s all the visible text on the page” when a tabbed/scrollable page is known.
+  - Long OCR/metadata dumps without the target terms “year,” “first found,” “west of Texas.”
+  - Reuse of site header/navigation text; absence of table/occurrence entries or quotes.
+
+==================================================
+
+=== Schema for Error Log 30 ===
+Generated Schema:
+Agent Name: Assistant
+Step Number: 82
+Reason for Mistake: The assistant shifted from solving the task with available tools to delegating the task to external human contacts (e.g., county offices), effectively transferring responsibility outside the multi-agent system. This “externalization/deferral” pattern often arises after access friction (CAPTCHAs/blocks) and results in scope drift and non-actionable next steps.
+
+1) Error Signatures
+- Distinctive patterns/signals:
+  - Introduction of external outreach steps: “contact,” “call,” “email,” “reach out,” “FOIA/request,” “customer service.”
+  - Providing phone numbers/addresses or composing email templates instead of performing analysis.
+  - Generating code to scrape contact details rather than target data.
+  - Proposing to “wait for a response” as part of the plan.
+  - Geographic/jurisdiction drift when naming agencies (e.g., Queen Anne’s County, MD vs. Queen Anne, Seattle, WA).
+- Telltale behavioral signs:
+  - Lists “Direct Contact” as a plan step; includes a “Script for Direct Contact.”
+  - Shifts from filtering/searching datasets to administrative outreach.
+  - Mentions department names (Treasury Division, assessor) and public records requests unrelated to immediate tool capabilities.
+
+2) Error Context Analysis
+- Typical contextual conditions:
+  - Prior repeated web blocks or CAPTCHAs; frustration with filters or site access.
+  - Orchestrator signals “stalled” or “replanning,” prompting a strategy pivot.
+  - The original question is factual and should be answerable via available web/data tools; no user request to perform outreach.
+- Common preceding sequence:
+  - Multiple unsuccessful searches/filter attempts → site access errors → assistant proposes external contact → provides email/phone/script details.
+
+3) Detection Heuristics
+- Screening questions:
+  - Did the assistant recommend contacting an external office/person to obtain the answer?
+  - Did the user request outreach or consent to external contact?
+  - Did the assistant produce contact scripts or phone/email details instead of continuing in-tool research?
+  - Is there jurisdiction mismatch between the suggested office and the actual target locale?
+- Analytical framework (TRACE):
+  - T (Task fit): Is outreach necessary for this task type?
+  - R (Role adherence): Is the assistant offloading core reasoning/actions?
+  - A (Access trigger): Did access friction immediately precede outreach?
+  - C (Clues/phrases): Presence of “email the department,” “call,” “reach out,” “FOIA.”
+  - E (Extern vs. internal): Steps emphasize external actors over agent tooling.
+- Key phrases/conversation indicators:
+  - “Email the Department,” “call [number],” “reach out to [office/agency],”
+  - “Script to contact…,” “open your email client,” “wait for their response,”
+  - “Treasury Division,” “assessor’s office,” “public records request,”
+  - Out-of-scope geography (e.g., Queen Anne’s County, MD) when target is Queen Anne, Seattle, WA.
+
+==================================================
+
+=== Schema for Error Log 31 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 9
+Reason for Mistake: Premature acceptance of a partial search snippet as a complete result set. The agent began verifying individual items before establishing a complete, constraint-satisfying candidate list. Signals included unverified completeness, inclusion of out-of-area entries, and lack of confirmation that distances were “by car.”
+
+1) Error Signatures
+- Declares “list found” or “identified several” immediately after viewing a single SERP panel without opening full results or map view.
+- Proceeds to verify items one-by-one without first confirming the list is complete.
+- Visible “See more results” or truncated entries (…) present in the SERP, but not acted upon.
+- Geographic incoherence: items show city/state mismatches (e.g., Mount Pleasant, SC vs Point Pleasant, WV), unfamiliar ZIPs/area codes (e.g., 843 vs local 304), or distant map markers.
+- Constraint drift: items include non-matching categories (martial arts schools, gymnastics centers) despite a “gyms only” constraint.
+- Missing distance modality: no explicit “by car” distances; relies on SERP headline “within 5 miles” without tool-based confirmation.
+- Language cues: “We have identified multiple gyms” followed by a short, unnumbered list that mirrors the SERP snippet.
+
+2) Error Context Analysis
+- Typical setup: Agent successfully finds the anchor address, runs a generic web search, sees a SERP info panel labeled as meeting the constraint (e.g., “Gyms within 5 miles…”).
+- Preceding sequence: Address lookup → general search query with constraint wording → reliance on the on-page snippet without opening a dedicated map, adjusting filters, or scrolling/expanding.
+- Follow-on behavior: Shifts to verification of the few surfaced names instead of confirming coverage; no step to confirm list pagination, radius settings, or mode (driving vs straight-line).
+
+3) Detection Heuristics
+- Questions to ask:
+  - Did the agent explicitly confirm that the list is complete (e.g., checked “see more,” pagination, or full map results)?
+  - Are all listed items in the correct city/state and within the specified driving distance?
+  - Is the distance modality (“by car”) evidenced by a navigation tool rather than inferred from a SERP label?
+  - Are there category mismatches (martial arts/gymnastics) included as “gyms”?
+  - Did the agent begin verification before completing enumeration of candidates?
+- Analytical framework:
+  - Completeness-Constraints-Coherence (3C) check:
+    - Completeness: Full list obtained/expanded? Pagination/“see more” handled?
+    - Constraints: Distance modality (by car), radius, and category filters applied?
+    - Coherence: Geospatial consistency (city/state, ZIP, area code) across all items?
+- Key phrases/patterns indicating risk:
+  - “We have identified several…” after a single SERP view.
+  - “Next step: verify these” without any mention of “see more,” scrolling, or map expansion.
+  - Copying SERP headers like “within 5 miles” as proof, with items showing other states or far ZIP codes.
+  - Lists containing mixed categories (e.g., “martial arts club”) despite an exclusion criterion.
+
+==================================================
+
+=== Schema for Error Log 32 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 6
+Reason for Mistake: The orchestrator issued a directive that anchored on a single, temporally misaligned source (an Ensembl browser page) and a non-repository URL, ignoring the user’s explicit “as of May 2020” constraint and the need for a direct file repository link. The instruction steered the workflow toward an interactive gene/assembly viewer rather than a canonical download location, creating a high risk of returning an incorrect link.
+
+1) Error Signatures
+- Instruction narrows prematurely to one source without justifying relevance to the stated time window.
+- Temporal qualifier in the user request is absent from the instruction (no mention of “as of May 2020,” release dates, or version constraints).
+- Target URL is a browser/UI or gene-specific page (e.g., mart.ensembl.org with g=, r=, t= params) rather than a file repository or archive (e.g., FTP/HTTP directory).
+- Instruction references release labels that are inconsistent with the requested timeframe (e.g., later Ensembl releases when the question specifies May 2020).
+- Vague verbs like “investigate” or “find the link” with no criteria tied to date, version, or file type.
+- Early declaration of progress/satisfaction based on landing on a general species or viewer page, not a download directory.
+
+2) Error Context Analysis
+- The user’s request includes a clear temporal constraint and expects a direct link to files (not a viewer).
+- Preceded by a generic search that does not apply time filters or version names, yielding mixed-era results.
+- The orchestrator’s plan lists multiple plausible repositories but the instruction selects one arbitrarily.
+- The selected page is an index/viewer or per-gene URL rather than a top-level assembly or downloads page.
+- Downstream: subsequent steps show confidence/satisfaction without verifying the date/version or repository type.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Does the instruction explicitly incorporate the required timeframe (e.g., “as of May 2020”)?
+  - Does it specify or verify the expected assembly/version name consistent with that timeframe?
+  - Is the target a file repository/archive link versus an interactive browser or per-gene page?
+  - Are the referenced release numbers/assemblies plausibly within the requested date window?
+- Analytical framework:
+  - Alignment triad: Time (requested date vs resource release), Source (canonical repository for that period vs arbitrary pick), Target Type (download directory vs viewer page).
+  - Premature anchoring check: Was one search result chosen without temporal or source justification?
+- Key indicators/phrases:
+  - Mentions like “Ensembl genome browser [high release number]” or URLs containing mart.ensembl.org with g=/r=/t= parameters.
+  - Instruction phrases lacking temporal anchors: “investigate this result,” “find the link,” “most recent,” without “as of [date]” or version checks.
+  - Satisfaction claims after opening non-download, non-archive pages.
+
+==================================================
+
+=== Schema for Error Log 33 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent reached only a generic landing page (BASE homepage) instead of the requested DDC 633 results and then hit an internal content-filter/exception error. No task-specific evidence (DDC 633 items, flags, languages, 2020 scope) was extracted before a sudden, unsupported final answer appeared. This pattern indicates a navigation + infrastructure failure leading to an ungrounded conclusion.
+
+1) Error Signatures
+- System/stack trace output appears mid-conversation (e.g., “Error processing publish message,” “BadRequestError,” “ResponsibleAIPolicyViolation,” “content_filter,” “The response was filtered”).
+- Agent reports generic site headers or boilerplate (e.g., “Search 411,948,582 documents,” “Basic search, Advanced search, Login”) without task-relevant content.
+- No mention of key target tokens (e.g., “DDC 633,” “2020,” “flags,” “languages”) in the extracted page text.
+- Abrupt transition from error logs to a definitive “FINAL ANSWER” with no intermediary evidence.
+- Click/action descriptions that do not progress the state (e.g., “I clicked [homepage link]”) followed by no targeted navigation or filtering.
+- Odd UI telemetry text suggesting non-action or glitch (e.g., “typed … into ‘0 characters out of 2000’”).
+
+2) Error Context Analysis
+- Preceded by broad external search results rather than direct navigation to a filtered/internal results page.
+- The agent opens the top-level site instead of deep-linking to the target category or applying filters (DDC code, year).
+- Lack of within-site search or browsing steps for the requested classification (no evidence of DDC browsing or query parameters).
+- The sequence: generic search -> homepage view -> internal exception -> unsupported final answer.
+- Time-scoping absent (no “as of 2020” filtering or mention).
+
+3) Detection Heuristics
+- Quick questions to ask:
+  - Did the agent cite or show any page that explicitly includes “DDC 633” and a 2020-relevant scope?
+  - Is there a list of items, languages, or flags actually extracted from the page?
+  - Did any exception/content-filter messages appear in the transcript?
+  - Is the provided answer justified by specific on-page evidence or URLs containing relevant parameters (e.g., ddc=633)?
+- Analytical framework:
+  - Evidence checklist: Target resource reached? Constraints applied (DDC 633, 2020)? Data extracted (flags/languages)? Errors present? Justification linking evidence to answer?
+  - If “No” for resource/constraints/data and “Yes” for errors, classify as navigation/infrastructure failure with ungrounded output.
+- Key phrases/patterns to flag:
+  - “Error processing publish message,” “BadRequestError,” “ResponsibleAIPolicyViolation,” “content_filter,” “The response was filtered…”
+  - Generic homepage-only OCR (e.g., “Basic search, Advanced search, Content providers, Statistics”).
+  - “FINAL ANSWER:” appearing immediately after an error log.
+  - Action logs like “I clicked [BASE homepage]” without subsequent targeted steps or page changes referencing DDC 633.
+
+==================================================
+
+=== Schema for Error Log 34 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent issued broad, unrefined searches and reported generic, off-topic results (tutorials, videos, explanations) instead of extracting the specific OpenCV version and its contributors from authoritative sources (OpenCV GitHub releases/PRs/issues). It failed to produce the required artifact (a concrete version number) and moved forward with incomplete data, causing downstream errors.
+
+1) Error Signatures
+- Output lacks the core required artifact (no explicit OpenCV version number present).
+- Reliance on search results page summaries/screenshots without opening authoritative links.
+- Sources skew toward general educational content (GeeksforGeeks, Analytics Vidhya, videos) rather than OpenCV’s GitHub repo/release notes.
+- Mentions of “initial support” or general statements without tying to a version or PR number.
+- Presence of broad, topic-explainer links (“What is Mask R-CNN?”, “Implementing Mask R-CNN”) unrelated to the specific version inquiry.
+- Absence of numeric patterns typical of versioning (e.g., 3.4.x, 4.0.x) in the delivered content.
+- Vague language: “found some info/resources,” “videos of…,” “explained here,” with no precise citation.
+
+2) Error Context Analysis
+- Task type: targeted fact retrieval requiring a specific version identifier from an authoritative source.
+- Preceded by a plan step that explicitly requests a version number, but the agent returns general search output instead.
+- The agent stops at the SERP or top-level pages, not drilling down to OpenCV GitHub issues/PRs/releases.
+- Subsequent steps reference or assume incomplete findings, cascading into incorrect final answers.
+
+3) Detection Heuristics
+- Verification questions:
+  - Is there a concrete version number extracted and stated?
+  - Is the source an authoritative OpenCV channel (GitHub opencv/opencv PR/issue/release, official docs)?
+  - Did the agent provide a direct link and snippet tying Mask R-CNN support to a specific version?
+- Analytical framework:
+  - Evidence-to-Requirement Check: For each required fact (version, contributors), is there direct evidence (quote/link) from an authoritative source? If not, flag.
+  - Specificity Test: Do results contain version-like numerals and repository metadata (PR/issue IDs, release tags)? If absent, flag.
+  - Topicality Filter: Are cited pages explanatory/tutorial in nature rather than primary source? If yes, flag as likely off-target.
+- Key indicators/phrases:
+  - “Videos of…,” “What is…,” “Implementing…,” “Explained…”
+  - No numeric version strings (e.g., 3.4.2, 4.0.0)
+  - References to general sites (GeeksforGeeks, Analytics Vidhya, Medium) instead of opencv/opencv GitHub
+  - SERP screenshots/summaries used as final evidence
+  - “Initial support” mentioned with no version linkage
+
+==================================================
+
+=== Schema for Error Log 35 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 12
+Reason for Mistake: OCR failed to capture on-page price elements (likely dynamic, image-embedded, or below-the-fold), causing the agent to report/assume the needed prices weren’t present and triggering a loop of scrolling/navigating despite the information being on the page.
+
+1. Error Signatures:
+- OCR output shows only promotions (e.g., “WinterFest,” “2025 Gold Pass,” “Offer ends Jan 5,” “From $X,” “Buy Now”) but no explicit 2024 regular daily ticket price or 2024 season pass price.
+- Agent reports general UI text and headers (tabs like “Season Pass | Daily Tickets | WinterFest”) without extracting the target numeric values for the requested category/year.
+- Repeated “scroll further,” “revisit the page,” or “still need specific prices” instructions without new, concrete price numbers.
+- Year drift in extracted content (mentions of 2025 or special events) while the question targets 2024 standard admission.
+- The orchestrator toggles between pages (season pass/daily tickets) but never records a specific 2024 price, indicating data not being seen rather than not existing.
+
+2. Error Context Analysis:
+- Context typically includes official pricing pages with mixed content blocks (standard admission, seasonal promos, event bundles) and dynamic modules that OCR may miss.
+- The sequence often shows: search → open official page → OCR reports promos/special events → instruction to scroll → multiple scrolls reach footer → return to a different page → repeat, with no extraction of the required 2024 prices.
+- The orchestrator flags “in loop” or “stalled… replanning,” while the agent’s page summaries remain promotion-heavy and year-misaligned.
+
+3. Detection Heuristics:
+- Questions to ask:
+  - Does the extracted text contain explicit numeric prices tied to “2024” regular daily admission and 2024 season pass (not “From,” not bundles/events)?
+  - Is the OCR output dominated by “WinterFest,” “2025 Gold Pass,” or limited-time promo language?
+  - After multiple navigations/scrolls, do we still lack concrete 2024 price figures?
+- Analytical framework:
+  - Target-Attribute Match Check: Compare target (entity=California’s Great America; product=2024 season pass + 2024 regular daily ticket; context=standard admission) against extracted text attributes (year, product type, event). Flag mismatch if year ≠ 2024 or product ≠ standard admission.
+  - Evidence Completeness Check: Require at least one explicit price figure per target item; if absent after 2+ page interactions, flag potential OCR extraction failure.
+  - Loop Signal Check: Detect repeated directives (“scroll further,” “revisit”) without net new price data → flag OCR/content-capture failure pattern.
+- Key phrases/patterns indicating this error:
+  - “From $X,” “Buy Now,” “Offer ends [date],” “Includes WinterFest,” “2025 Gold Pass,” “Valid thru 1/5/25”
+  - Orchestrator statements like “still need to find specific prices,” “prices not found on this page,” “scroll further,” appearing multiple times without numeric results.
+  - OCR blocks showing tabs/headers but lacking the specific 2024 price lines for standard daily admission or 2024 season pass.
+
+==================================================
+
+=== Schema for Error Log 36 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 9
+Reason for Mistake: Premature completeness assumption from a partially viewed source. The Orchestrator treated a single, partially visible IMDb list page as a “full list” without verifying page coverage, pagination, or dataset completeness, then proceeded to downstream filtering/availability checks.
+
+1) Error Signatures
+- Content coverage signals:
+  - WebSurfer reports low viewport coverage (e.g., “viewport shows 18–30%,” “positioned at the top of the page”) with no subsequent scroll/pagination actions.
+  - Presence of list UI cues like “List activity,” “List order,” “Create a new list,” or “19 titles” indicating a curated subset rather than a complete filmography.
+- Language/claim mismatch:
+  - Orchestrator states “we have gathered the full list” or “successfully gathered IMDB ratings and durations” immediately after opening one page, without evidence of full extraction.
+  - No structured output presented despite a request to “scrape” or “provide data in a structured format.”
+- Process gaps:
+  - No instructions to scroll, click “next,” expand “show more,” or paginate.
+  - No verification of end-of-list markers or item counts vs. expected totals.
+
+2) Error Context Analysis
+- Typical context:
+  - Tasks requiring comprehensive enumeration (e.g., “full list,” “all items,” “complete filmography”).
+  - Sources with long lists, pagination, or lazy-loading (IMDb lists, filmographies, retailer catalogs).
+  - Curated/user-created list pages used as primary sources instead of authoritative, complete indexes.
+- Preceding sequence:
+  - Plan specifies “full list” collection.
+  - WebSurfer opens a relevant page and reports partial viewport.
+  - Orchestrator updates ledger claiming list acquisition/completeness without further page interaction or data dump.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Did we view/scroll through the entire list or navigate all pages?
+  - Is there an explicit end-of-list indicator or item count confirmation?
+  - Is the source a curated/user list vs. an authoritative, complete filmography?
+  - Was any structured dataset (table/JSON) actually returned?
+  - Do claimed totals match known/expected counts for the entity?
+- Analytical framework:
+  - Coverage-completeness check: Source type → Pagination present? → Scroll/Next actions executed? → End-of-list seen? → Item count reconciled?
+  - Evidence audit: Claims of “full list” must be accompanied by either a complete structured dump or end-of-list proof.
+- Key indicators/phrases:
+  - “Viewport shows X%,” “top of page,” “19 titles,” “List activity,” “List order.”
+  - Orchestrator ledger phrases like “successfully gathered the IMDB ratings and durations” after a single page open.
+  - Absence of verbs like “scroll,” “load more,” “next page,” “expand,” “summarize entire page,” or “extract all items.”
+
+==================================================
+
+=== Schema for Error Log 37 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 4
+Reason for Mistake: The agent’s initial search omitted the mandated source keyword (“Monterey Bay Aquarium”), violating a clear constraint in the user’s question. This led to generic results (e.g., YouTube/National Geographic pages) and set the conversation on a path that ignored the specified source domain.
+
+1) Error Signatures
+- Search queries lack required source terms or domain filters (e.g., missing “Monterey Bay Aquarium” or site:montereybayaquarium.org).
+- Early results and clicks are from unrelated domains (YouTube, NatGeo, Bing videos) instead of the specified source.
+- Agent self-reports queries like “first National Geographic short on YouTube” with no source mention.
+- Repeated attempts to resolve sub-entities (#9) without anchoring to the specified website.
+- No evidence of source-provenance checks or domain restriction in subsequent searches.
+
+2) Error Context Analysis
+- User prompt explicitly includes a source constraint (“according to the Monterey Bay Aquarium website”).
+- The plan or fact sheet acknowledges the source but the first search ignores it.
+- Typical sequence: generic identification of the media (the video) → attempts to decode “#9” inside non-source content → drift away from the mandated site → loop.
+- Occurs in multi-source tasks where the agent prioritizes content discovery over source compliance.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Does the user prompt specify a source/site? If yes, is that term present in the agent’s first 1–2 queries?
+  - Are any queries using a domain filter for the specified site?
+  - Are the first clicked/previewed results from the required domain?
+- Analytical framework:
+  - Constraint extraction: parse the prompt for source, unit, and entity constraints.
+  - Query-to-constraint alignment: compare each query against extracted constraints; flag omissions.
+  - Source provenance audit: track visited domains vs required domain; flag absence within initial steps.
+- Key indicators:
+  - Queries that mention only the topic (e.g., “first National Geographic short on YouTube”) without the source keyword.
+  - Orchestrator notes referencing the source while subsequent WebSurfer actions do not.
+  - Persistent references to non-source content (NatGeo pages/YouTube) before any Monterey Bay Aquarium page appears.
+
+==================================================
+
+=== Schema for Error Log 38 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 3
+Reason for Mistake: The Orchestrator issued a generic web-search instruction that satisfied only the “recommendations” portion of a multi-constraint task and omitted a source-specific verification step on TripAdvisor (required to check rating ≥4.5/5 and ≥50 reviews). This reflects a requirement-to-instruction mismatch: explicit constraints tied to a specific data source (TripAdvisor) were not translated into explicit browsing directives, causing downstream steps to chase general content without validating the numeric thresholds on the required platform.
+
+1) Error Signatures
+- Absent source-specific directives: Early instructions say “search the web” or “visit blogs/forums” without mentioning the required platform (TripAdvisor).
+- Missing numeric-criteria language: No prompt mentions “4.5/5,” “≥50 reviews,” “rating,” or “review counts” in the first verification steps.
+- One-sided progress: Actions gather recommendations but show no steps to validate them against TripAdvisor metrics.
+- Cross-reference gap: Plans mention cross-referencing but do not instantiate concrete actions to open TripAdvisor pages for each candidate hike.
+- Output drift: Intermediate or final answers list items without citing TripAdvisor pages, ratings, or review counts.
+- Repetition loop: Multiple attempts to navigate general sources (e.g., blogs) while never switching to TripAdvisor verification.
+
+2) Error Context Analysis
+- Context: User query includes dual constraints, one tied to a specific source (TripAdvisor with rating and review thresholds).
+- Typical lead-up: 
+  - Initial plan notes TripAdvisor but first actionable instruction targets generic discovery (blogs/social) only.
+  - Subsequent steps continue expanding recommendations rather than verifying on TripAdvisor.
+  - Orchestrator’s ledger acknowledges unmet request but keeps issuing general-search instructions.
+- Environment: Presence of a browsing agent (WebSurfer) capable of site-specific queries, yet directed to broad search instead of the mandated platform.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Do any early instructions explicitly tell an agent to open TripAdvisor and capture rating and review counts?
+  - Are the numeric thresholds (≥4.5/5, ≥50 reviews) referenced in actionable prompts, not just in planning text?
+  - For each candidate item, is there a step that names the TripAdvisor page to visit and the fields to extract?
+- Analytical framework:
+  - Requirement-to-Instruction Trace: Map each explicit user constraint to at least one concrete instruction. Flag if “TripAdvisor + ratings/reviews” has no corresponding action.
+  - Evidence Check: Scan conversation for occurrences of “TripAdvisor,” “rating,” “reviews,” “4.5,” “50.” If only in the plan but not in instructions, mark as error.
+- Key indicators in text:
+  - Phrases like “search the web,” “find family-friendly hikes,” “visit blogs/forums,” “provide a list” without “TripAdvisor,” “rating,” or “reviews.”
+  - Plans that say “cross-reference with TripAdvisor” but no subsequent instruction naming TripAdvisor queries for specific hikes.
+
+==================================================
+
+=== Schema for Error Log 39 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 30
+Reason for Mistake: Gave a misaligned instruction that directed the browsing agent to general genome browsers (NCBI GDV) and generic Ensembl UI searches instead of the canonical, time-versioned download source (Ensembl FTP release directories). The instruction ignored the time-bounded requirement (“most recent on 20/10/2020”), did not constrain by release number/date, and did not require a direct file URL with the correct extension (.gff3/.gff3.gz). This led to source drift (NCBI vs Ensembl), repeated generic searches, and a non-file “viewer” URL as the final answer.
+
+1) Error Signatures
+- Instruction targets UI browsers or literature (e.g., NCBI GDV, PubMed/PMC) rather than versioned download endpoints/FTP when a direct file link is requested.
+- Vague, multi-pronged search directives (“search NCBI and Ensembl”) without specifying the canonical repository or path structure.
+- No mention of file extension or requirement for a direct file URL; returned links are web app pages (contain /gdv/, /browser/, query params) rather than .gff3/.gff3.gz files.
+- Time-bounded query ignored: no reference to archived releases, release numbers (e.g., Ensembl release-101), or date constraints.
+- Repeated “search”/“look for” loops yielding irrelevant pages; oscillation between repositories.
+- Use of common name only (“beluga whale”) without species binomial in directory-aware contexts.
+
+2) Error Context Analysis
+- Arises in tasks requiring historically “most recent as of date X” data retrieval.
+- Prior steps include generic web searches, access failures, or detours into unrelated content (e.g., PMC articles).
+- The orchestrator responds by reissuing broad search instructions instead of anchoring to known, versioned data locations (e.g., ftp.ensembl.org/pub/release-XXX/gff3/...).
+- Conversation shows cross-source drift (NCBI ↔ Ensembl) and lack of domain-specific pathing (species-specific directories, release folders).
+
+3) Detection Heuristics
+- Questions to ask:
+  - Does the instruction specify a versioned/archived source aligned to the date (e.g., Ensembl release-101 for Oct 2020)?
+  - Does it require a direct file URL with the correct extension (.gff3/.gff3.gz)?
+  - Does it identify the canonical repository for this data type/timeframe (Ensembl FTP for GFF3 releases) instead of UI browsers?
+  - Is the species referenced by its binomial in the expected directory pattern (e.g., delphinapterus_leucas)?
+- Analytical framework:
+  - Map intent → source → time/version → filetype. Flag if any dimension is missing/misaligned.
+  - Validate candidate URLs: must be direct file links ending with .gff3 or .gff3.gz; reject viewer/search/literature URLs.
+  - Check for repository drift and non-archival paths when a historical state is requested.
+- Key indicators/phrases:
+  - “Genome Data Viewer,” “Genome Data Browser,” “Browse genome,” “Search organisms,” “PMC,” “PubMed” in contexts expecting a file link.
+  - “Provide the direct link to the file if found” without specifying file extension or release/date.
+  - Instructions that pair “most recent on [past date]” with non-versioned, live UI searches.
+
+==================================================
+
+=== Schema for Error Log 40 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 16
+Reason for Mistake: Partial filter application (beds set, baths omitted) and premature conclusion from intermediate, unfiltered results.
+
+1. Error Signatures
+- UI/Filter State Mismatch:
+  - Visible filter pill shows “2+ bd, 0+ ba” (or equivalent) when the task requires 2+ baths.
+  - URL/queryState contains beds filter (e.g., "beds":{"min":2}) but no baths filter present.
+- Premature Finalization:
+  - Agent announces or implies a final answer immediately after a single filter interaction or page load, without confirming all required criteria.
+  - Mentions a specific address or “smallest” property without evidence of full filtering/sorting.
+- Criteria Omission in Narrative:
+  - Agent describes applying beds filter only; no explicit mention of bathrooms and/or date range being applied.
+- Inconsistent Result Labels:
+  - Listings show “House for sale” or missing “Sold” dates while the task requires sold properties within a specific timeframe.
+- Cross-Region/Entity Leakage:
+  - Property details include locations outside the target region (e.g., Yakima, WA) on a page intended for Prince Edward Island.
+- Reliance on Intermediate Artifacts:
+  - Uses sidebar snippets/JSON-LD or partial cards (missing baths/sold date) as proof of compliance.
+
+2. Error Context Analysis
+- Typical Conditions:
+  - Agent has just opened a generic search results or top-level “Sold” page and begins filtering.
+  - Only one filter interaction is recorded (e.g., clicking “2+” under Bedrooms) before drawing conclusions.
+  - No recorded interaction with date filters or verification of sold dates within the requested range.
+- Preceding Sequence:
+  - Initial navigation to a broad results page.
+  - Single criterion applied (beds) with no follow-up for baths and date range.
+  - Immediate attempt to name the “smallest” listing based on whatever is visible first.
+  - Sometimes accompanied by ambiguous or conflicting metadata (e.g., JSON-LD showing a different location).
+
+3. Detection Heuristics
+- Diagnostic Questions:
+  - Are all mandatory constraints explicitly active: source=Zillow, region=PE, status=Sold, sold date within range, beds ≥ 2, baths ≥ 2?
+  - Does the interface or URL clearly show a baths filter (e.g., “2+ ba”) and a date constraint?
+  - Did the agent list evidence (beds, baths, sqft, sold date) for the proposed “smallest” candidate?
+  - Was any sorting or comparative step described to justify “smallest by square footage”?
+- Analytical Framework (Constraint Checklist):
+  - Source verified: Zillow
+  - Geography: Prince Edward Island only
+  - Transaction status: Sold
+  - Time window applied: 2022-06-01 to 2024-05-15
+  - Beds: ≥ 2
+  - Baths: ≥ 2
+  - Square footage present and compared across candidates
+  - Final answer selected after applying all constraints
+- Key Phrases/Patterns to Flag:
+  - Filter display text like “2+ bd, 0+ ba”
+  - Statements like “I clicked ‘2+’” with no mention of bathrooms/date filters
+  - “FINAL ANSWER” or “smallest is…” immediately after partial filtering
+  - Citing a property without listing both beds and baths or the sold date
+  - Referencing locations inconsistent with the target region (e.g., US city names)
+
+==================================================
+
+=== Schema for Error Log 41 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 8
+Reason for Mistake: The agent implicitly accepted an unverified Latin root-to-Spanish mapping (camināta → caminata) from a search snippet and proceeded to search generically for the Collins dictionary instead of validating the lemma and targeting the required 1994 example/source title. This orthographic-matching shortcut, combined with site access friction, caused the task to drift away from the user’s constraints (specific word, year 1994, Collins example, source title, Google translation).
+
+Error Signatures:
+- Premature “verification” of a term based on a SERP snippet or partial page (e.g., inferring the Spanish lemma solely by spelling similarity).
+- Generic navigation/search actions (e.g., “Collins Spanish-to-English dictionary online”) instead of targeted queries that include the candidate word and year.
+- Progress summaries that promote guesses to “verified facts” without a quoted source or deep page view.
+- Absence of required constraints in actions or summaries (no mention of the 1994 example, source title, or Google translation step).
+- Task drift to alternate sites (SpanishDict/Reverso) unrelated to the specified source (Collins) while treating them as equivalent.
+- Final outputs that match a dictionary gloss (e.g., “hike”) rather than the requested metadata (source title translation).
+
+Error Context Analysis:
+- Occurs in multi-hop retrieval tasks requiring: etymology → cross-language lemma → specific dictionary entry → dated example → source title → translation.
+- Typically preceded by:
+  - Reliance on OCR/SERP snippets instead of opening and confirming the primary source entry.
+  - Site access barriers (e.g., Cloudflare) that shift focus from correctness to navigation.
+  - Ledger/plan updates that convert an “educated guess” into a “given/verified fact.”
+  - Repeated broad searches that omit critical constraints (word + “1994” + “Collins” + “example/source”).
+- Followed by:
+  - Chasing irrelevant results (e.g., general meanings or other dictionaries) and ignoring the year/source-title requirement.
+  - Failure to reference or quote the specific example line or its bibliographic source.
+
+Detection Heuristics:
+- Targeted questions to ask:
+  - Has the Spanish lemma been explicitly validated from a reliable etymology source linked to the Yola word, with a direct citation?
+  - Do the semantics of the chosen Spanish word plausibly align with the Yola term’s meaning and Latin root (not just spelling)?
+  - Where is the exact 1994 example and its source title from Collins? Is there a direct quote or screenshot?
+  - Are we still operating on Collins content, or have we drifted to other sites while treating them as equivalent?
+- Analytical framework:
+  - Traceability check: For each asserted “verified fact,” identify its source, URL, and direct quote. If missing, flag as unverified.
+  - Constraint alignment check: Confirm that actions and intermediate outputs explicitly include the required constraints (word, Collins, 1994, example, source title, Google translation).
+  - Semantic consistency check: Verify that the etymological chain and meaning across languages are coherent, not just orthographically matched.
+- Key indicators in conversation:
+  - Phrases like “identified as” or “verified” without a citation; “might be,” “likely,” or “educated guess” later treated as facts.
+  - Search/instruction patterns missing constraint terms (no “1994,” no “source title,” no specific lemma).
+  - Progress reports that celebrate finding generic definitions or alternative dictionary entries instead of the required Collins example/source.
+  - Access-issue mentions (e.g., Cloudflare) followed by acceptance of unverified assumptions rather than re-validating the lemma and constraints.
+
+==================================================
+
+=== Schema for Error Log 42 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 29
+Reason for Mistake: Premature finalization/unsupported inference. The agent marked the request as satisfied and produced a final answer without having actually located or cited the specific datum required (the deleted word), despite evidence on-screen indicating that the answer was not yet found. It failed to replan or continue browsing when key sub-questions remained unresolved.
+
+1) Error Signatures
+- Premature “request satisfied” flagging while the specific factual datum has not been extracted or quoted.
+- Contradictory state: ledger claims completion but includes language like “not explicitly stated on the screen” or “you can access for precise details.”
+- Final answer provided without a direct citation, quote, or on-page evidence of the required item.
+- Use of hedges or placeholders (“based on the prompt,” “likely,” “not explicitly stated”) coupled with definitive task completion.
+- Abrupt termination/“FINAL ANSWER” after opening a relevant page but before scrolling, locating, or verifying the target detail (e.g., amendments/notes).
+- Skipped verification of earlier constraints (e.g., “fifth section alphabetically”) while still concluding the task.
+
+2) Error Context Analysis
+- Occurs after partial progress: the correct collection/page is opened, but the specific evidence (amendment details/deleted word) is not yet visible or confirmed.
+- Often follows an initial plan that lists subtasks, but the agent concludes after completing only some (navigate-to-page) steps.
+- The ledger shows progress and then flips to “request satisfied” without an intervening extraction step or evidence capture.
+- A sequence where the browsing agent reaches the relevant rule/article, but no subsequent actions (scrolling, opening notes, or comparing amendments) are taken to confirm the exact change.
+
+3) Detection Heuristics
+- Verification questions:
+  - Has the exact requested datum (the deleted word) been explicitly located, quoted, or summarized with a clear on-page reference?
+  - Is there a URL and section reference (e.g., “Notes,” “Amendments,” “Advisory Committee Notes”) supporting the claimed answer?
+  - Were all preconditions in the prompt verified (e.g., “fifth section alphabetically,” “article with ‘witnesses’ in the most titles”) with evidence?
+  - Does the ledger’s “request satisfied” align with the presence of a concrete, evidenced answer?
+- Analytical framework:
+  - Evidence-Answer Alignment Check: Compare the final answer against captured page content; flag if answer lacks direct evidence.
+  - Task Decomposition Coverage: Ensure each required subtask (identify section, article, first rule, last amendment, deleted word) has a corresponding action and evidence.
+  - State Consistency Audit: Scan for contradictions between “request satisfied” and statements indicating missing information.
+- Key indicators/phrases:
+  - “The word is not explicitly stated on the screen” followed by task completion.
+  - “Based on the prompt” or speculative qualifiers preceding a definitive answer.
+  - “Task complete/Request satisfied” without quotes/citations of the specific change.
+  - Transition to “Assistant” or termination immediately after opening a likely page, with no extraction step.
+  - Omission of scroll/open actions to the relevant “Amendment” or “Notes” section before concluding.
+
+==================================================
+
+=== Schema for Error Log 43 ===
+Generated Schema:
+Agent Name: Assistant
+Step Number: 12
+Reason for Mistake: The assistant produced a numeric count from a truncated, viewport-limited list and acknowledged a missing endpoint (“South Station is not shown”) yet proceeded to compute a final answer. The count was derived from only the visible subset of stops and omitted key intermediate stations, reflecting directionality/route-variant confusion and incomplete boundary verification.
+
+1. Error Signatures:
+- Mentions reliance on partial evidence: “based on the screenshot/extracted portion,” “not shown,” “not necessarily listed,” yet gives a definitive count.
+- Enumerates a subset of items and the count equals only those listed, ignoring likely missing items.
+- Omits obvious hubs or expected intermediates (e.g., Back Bay, Ruggles) without justification.
+- Uses conclusory phrases despite missing data: “therefore,” “verification complete,” “final answer,” immediately after noting absent endpoints.
+- Treats “between X and Y (not included)” as items on only one side of Y (or X), indicating misinterpretation of “between.”
+
+2. Error Context Analysis:
+- Occurs after a web fetch that returns a long timetable/page where the viewport shows only part of the ordered list.
+- The question requires boundary-aware counting (“between X and Y, not included”), but one or both boundaries are not visible in the cited data.
+- Presence of route variants or annotations (e.g., “via Fairmount”) that imply multiple possible stop patterns, increasing risk of omission.
+- Single-pass extraction with no scrolling/expansion, followed by immediate calculation.
+- Assistant is instructed to “use the extracted list,” creating selection bias toward incomplete data.
+
+3. Detection Heuristics:
+- Boundary presence check: Are both named endpoints explicitly present in the data segment used? If not, flag.
+- Completeness probe: Does the assistant state or imply the list is partial (mentions screenshot/viewport) but still finalize a count?
+- Coverage check: Are well-known intermediate stops that typically lie between the endpoints missing from the enumeration?
+- Directionality validation: Do the listed “between” stops appear only on one side of the target station (all before or all after), indicating a misuse of “between”?
+- Inclusion/exclusion logic check: Does the narrative explicitly confirm exclusion of endpoints and inclusion of all intermediates?
+- List-to-count consistency: Did the assistant show all items used and does the count match them exactly, with no acknowledgment of potentially missing items?
+- Key indicator phrases: “based on the extracted list/screenshot,” “South Station is not shown,” “not necessarily listed,” “therefore… final answer,” “verification complete” despite acknowledged gaps.
+
+==================================================
+
+=== Schema for Error Log 44 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 39
+Reason for Mistake:
+- Summary: The agent repeatedly interacted with a rate-calculator page (clicking “CONTINUE”) without advancing to a results/quote screen, yielding no new or relevant data. The retrieved information was not useful because there was no extraction of prices or materially changed page state.
+
+- Error Signatures:
+  - Repeated clicks on the same control (e.g., “CONTINUE” / “Get a Quote”) with no transition to a results page.
+  - Identical or near-identical OCR text, URL, and page structure across multiple steps.
+  - Absence of any numeric quote, currency, or pricing range after actions intended to produce a quote.
+  - Orchestrator/ledger notes indicating “in loop,” “stalled,” or “no progress being made.”
+  - Actions logged as “clicked” but UI remains on intermediate form sections (e.g., “Origin postal code,” “Back to Origin / Destination”).
+
+- Error Context Analysis:
+  - Typically arises on JS-heavy multi-step forms (rate calculators) requiring additional fields or state changes (e.g., postal code, account, checkbox) not completed.
+  - Preceded by partial form entries and multiple attempts to submit without visible state transitions.
+  - Often co-occurs with site advisories, timeouts, or “page not found” notices that don’t contain price data.
+  - Sequence: search → open calculator → fill partial fields → repeat “continue”/“get quote” → unchanged screen → orchestrator flags loop/stall.
+
+- Detection Heuristics:
+  - Questions to ask:
+    - Did the last 2–3 actions introduce any new concrete numbers or currency values?
+    - Has the URL, page title, or key OCR tokens changed since the last step?
+    - Are we still viewing an input form rather than a results/summary with pricing?
+  - Analytical framework:
+    - State-change delta check: compare consecutive steps for changes in URL/title/core OCR tokens; if delta is minimal over ≥2 steps, flag.
+    - Evidence-of-answer scan: search for currency symbols, numbers with “USD,” “price,” “quote,” or ranges; if absent post-submission, flag.
+    - Repetition counter: detect identical “clicked [same control]” events ≥2 times without new data.
+  - Key phrases/patterns:
+    - Repeated “I clicked ‘CONTINUE’” or “I clicked ‘Get a Quote’” with identical page text.
+    - Persistent presence of form labels (“Origin postal code,” “I’m shipping to a residential address”) and navigation hints (“Back to Shipment”) instead of results.
+    - Ledger language: “in loop,” “stalled,” “no progress.”
+    - Timeout/Page-not-found notices or advisories without price figures.
+
+==================================================
+
+=== Schema for Error Log 45 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 20
+Reason for Mistake: A content-filter-triggered API exception occurred during message routing to the Assistant after repeated verification attempts, causing the Orchestrator to halt mid-turn and emit a premature, inconsistent final answer.
+
+Error Signatures:
+- System/stack trace lines:
+  - "Error processing publish message"
+  - openai.BadRequestError (400) with ResponsibleAIPolicyViolation and content_filter_results.jailbreak.filtered True
+  - Traceback referencing autogen_core/_single_threaded_agent_runtime.py and autogen_magentic_one/agents/*
+- Ledger patterns:
+  - is_in_loop: true and is_progress_being_made: false
+  - Repeated “Updated Ledger” entries with the same “next_speaker” and identical instructions
+- Behavioral cues:
+  - Multiple identical or near-identical “Please verify …” requests to the same tool
+  - Sudden “FINAL ANSWER” immediately following an exception, without new reasoning
+  - Final answer conflicts with already-available evidence
+- Preceding warning:
+  - “Resolved model mismatch: gpt-4o-2024-08-06 != gpt-4o-2024-05-13”
+
+Error Context Analysis:
+- Typical conditions:
+  - The task is solvable from local context, yet the Orchestrator insists on external verification
+  - Prior tool failures or filtering issues lead to switching “next_speaker” to Assistant
+- Preceding sequence:
+  1) Repeated WebSurfer verification attempts for the same items
+  2) Ledger marks stalled progress/in-loop
+  3) Handoff to Assistant (“Next speaker Assistant”)
+  4) API/content filter exception during the handoff
+  5) Immediate, unsupported finalization
+
+Detection Heuristics:
+- Diagnostic questions:
+  - Did a content filter (ResponsibleAIPolicyViolation/jailbreak) error occur right before finalization?
+  - Did the Orchestrator repeat the same instruction to the same tool 2+ times?
+  - Did the Ledger flip to is_in_loop: true and is_progress_being_made: false?
+  - Was “Next speaker Assistant” followed by an error trace?
+  - Does the final answer contradict straightforward derivable facts?
+- Analytical framework:
+  - Timeline anomaly scan: exception → immediate finalization
+  - Tool-loop detection: repeated prompts with no new inputs/results
+  - Ledger-state coherence check: loop/stall indicators preceding final answer
+- Key phrases/patterns:
+  - “Error processing publish message”
+  - “content_filter … ResponsibleAIPolicyViolation … jailbreak”
+  - “We are in a loop” / “Progress is stalled”
+  - Repeated “Please verify …” for the same entities
+  - “Next speaker Assistant” immediately before the exception
+  - “FINAL ANSWER” with no intervening reasoning or new evidence
+
+==================================================
+
+=== Schema for Error Log 46 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 32
+Reason for Mistake: Premature impossibility claim based on tool-level search failure. The agent equated “my current queries didn’t return it” with “the data does not exist/cannot be determined,” without demonstrating source exhaustiveness or evidence-of-absence. Patterns include shallow query variation, reliance on high-level/aggregate sources, and declaring futility rather than verifying unavailability via authoritative records.
+
+1) Error Signatures
+- Language cues:
+  - “The search tool does not return… therefore it cannot be determined.”
+  - “No results found” generalized to “information is unavailable.”
+  - “Cannot be determined” without citing an authoritative absence.
+- Behavioral signals:
+  - Minimal query diversification; repeated generic searches (e.g., general ridership records) instead of date/asset-specific terms.
+  - Pivoting to broad-year stats or PR articles unrelated to the exact datum (per-train, per-date) being asked.
+  - Little to no use of advanced search operators (site:, filetype:pdf), date filters, or synonyms.
+  - Few distinct sources or document types opened (e.g., skipping board packets, meeting minutes, performance reports, PDFs).
+  - Early termination or escalation (e.g., suggesting contact) as a substitute for verifying availability.
+
+2) Error Context Analysis
+- Typical context:
+  - Query requires granular, date-specific detail (per-train/per-station) likely stored in reports, PDFs, meeting packets, or archival materials.
+  - Initial results surface only aggregate/annual ridership pieces or social media posts.
+- Common preceding sequence:
+  - Open schedule pages or general service info.
+  - Open broad news/press about yearly records.
+  - Encounter access-friction sources (social media/paywalls).
+  - Conclude “can’t be determined” before trying authoritative archives (SFRTA board packets, minutes, monthly performance PDFs) or targeted operators.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Did the agent provide a source proving the data is unavailable, or only state that their search failed?
+  - Has the agent used advanced operators (site:, filetype:pdf), exact date filters, or domain-restricted searches?
+  - Did the agent explore multiple document types (PDF board packets, minutes, dashboards) beyond web articles?
+  - Are the queries aligned to the granularity (e.g., “May 27, 2019,” “Memorial Day,” “per-train passenger count,” “board meeting packet”)?
+- Analytical framework:
+  - Evidence-of-absence check: Negative claims must cite authoritative absence (e.g., official statement, index of datasets) rather than “no hits.”
+  - Query diversity score: Count distinct, targeted query variants and operators. Low diversity with a negative conclusion is a red flag.
+  - Source depth score: Count authoritative archival/document sources consulted. Low depth + impossibility claim indicates this error pattern.
+- Key phrases/patterns indicating the error:
+  - “Cannot be determined” tied to “search tool does not return” rather than source-based evidence.
+  - Repeated references to aggregate/annual stats when a specific per-date/per-train fact is requested.
+  - Early suggestion to abandon search or escalate contact without documented archival search attempts.
+
+==================================================
+
+=== Schema for Error Log 47 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 51
+Reason for Mistake: The Orchestrator authored unverified, schema-mismatched code inside a planning/thought message, mixing roles and assumptions about the dataset and tools. The code contained placeholders and referenced non-existent columns, indicating it was not grounded in the actual data structure. This pattern often appears immediately after a stalled loop, when the Orchestrator “replans” by injecting generic example code without validating schema or tool protocols.
+
+1) Error Signatures
+- Code appears inside an Orchestrator “New plan” or thought block rather than as an instruction to the execution agent.
+- Use of placeholders or speculative tokens (e.g., <identified_csv_file>.csv).
+- Schema mismatches: references to columns like “Year,” “Country,” or “Gross Savings (% of GDP)” that don’t exist in the target dataset (e.g., World Bank wide-format with ‘Country Name’ and year columns).
+- Generic/pseudo-code patterns (e.g., groupby('Country'), filter(lambda x: ...), (x > 35).all()) that don’t match known dataset structures.
+- Role mixing within the plan (“Assistant: … code …”, “ComputerTerminal: …”) rather than issuing executable instructions to the correct agent.
+- Prompts like “Run this script” embedded in thought/planning text without dispatching to the execution agent in the required code-block format.
+
+2) Error Context Analysis
+- Preceded by tool-execution friction (e.g., repeated unzip failures, JSON decode errors, terminal requiring code blocks).
+- Occurs after “Stalled… Replanning…” or similar signals of being stuck.
+- The Orchestrator tries to resolve a loop by injecting code rather than validating data schema or agent protocols.
+- The dataset has just been downloaded/unzipped, but no schema inspection step has been shown (no header preview, no sample rows printed).
+
+3) Detection Heuristics
+- Questions to ask:
+  - Is the Orchestrator proposing code in a thought/plan message rather than issuing a properly formatted command to the execution agent?
+  - Does the code reference columns or structures that are inconsistent with the known format of the cited dataset?
+  - Are there placeholders or ambiguous file references indicating the schema/file hasn’t been confirmed?
+  - Is there evidence that the schema was examined (e.g., listing columns) before code was written?
+  - Is the code aligned with user constraints (e.g., countries only, exclude aggregates), or does it ignore domain-specific filters?
+- Analytical framework:
+  - Role-to-action alignment check: Who wrote code vs. who should execute? Is the handoff correct?
+  - Schema conformance check: Do referenced columns/structures exist in the dataset?
+  - Trace validation: Was any schema inspection done between download and code generation?
+  - Constraint alignment check: Does the code reflect all user constraints (e.g., exclude regions/aggregates)?
+- Key phrases/patterns:
+  - “New plan,” “Root Cause of Failure,” “Stalled… Replanning…”
+  - “Run this script” without a tool-directed, code-block instruction
+  - Placeholders like “<identified_csv_file>.csv”
+  - Column names like “Year” or “Gross Savings (% of GDP)” in World Bank wide-format CSV context
+  - Mixed role labels inside Orchestrator thought (“Assistant: …”, “ComputerTerminal: …”) indicating non-executable planning code
+
+==================================================
+
+=== Schema for Error Log 48 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 4
+Reason for Mistake: Issued a definitive numeric answer without gathering, opening, or extracting the required evidence. The agent stopped at a search results page and jumped to “FINAL ANSWER” despite no sourced data, no year-by-year counts, and no reference to the 0.5 mm threshold.
+
+Error Signatures:
+- Premature finalization: phrases like “FINAL ANSWER: X” immediately after an initial search.
+- No source interaction: only a search results screenshot/summary, no clicks/opens/extracts from result pages.
+- Missing evidence chain: no quoted data, no URLs cited, no per-year figures, no computations shown.
+- Criteria omission: no mention of the specified threshold (0.5 mm) or the defined time window (first week of September).
+- Role drift: a browsing agent delivers the final percentage instead of providing raw findings.
+
+Error Context Analysis:
+- Occurs right after the first search action, before any page navigation.
+- The task explicitly requires data aggregation across multiple years; agent provides a single number without intermediate steps.
+- Often co-occurs with tool/runtime noise (e.g., an error/log snippet) followed by an abrupt answer.
+- Multi-agent setup expects WebSurfer to collect data for Assistant to compute; WebSurfer bypasses this handoff.
+
+Detection Heuristics:
+- Verification questions:
+  - Did the agent open any result pages and extract concrete values?
+  - Are there year-by-year rainy-day counts (2020–2023) and a computed probability?
+  - Is the 0.5 mm threshold explicitly referenced in the extracted data?
+  - Are specific sources/URLs cited for each data point?
+- Analytical framework:
+  - Evidence-to-claim check: For each claim, is there visible source data and a traceable computation?
+  - Process trace check: Search -> open page(s) -> extract metrics -> summarize -> hand off. Flag if any middle steps are missing.
+- Indicator phrases/patterns:
+  - “FINAL ANSWER: [number]” or “The answer is [X%]” with no preceding extraction.
+  - Narration like “I typed/search query…” followed directly by a conclusive answer.
+  - Only search-page OCR/screenshot provided; no “clicked/opened/scrolled/extracted” actions documented.
+
+==================================================
+
+=== Schema for Error Log 49 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 12
+Reason for Mistake: The agent supplied incomplete or non-authoritative information about critical language primitives, leading downstream reasoning to rely on speculation rather than verified semantics. This error is identifiable by vague summaries, lack of direct citations/quotes for the specific operators requested, and reliance on tangential sources that do not address the precise code pattern or constraints.
+
+1) Error Signatures
+- Vague/hedging language about core semantics (e.g., “likely,” “might,” “probably,” “seems”).
+- Summaries that restate generic knowledge but omit the exact operators the prompt targets (dot, backtick, r).
+- No direct quotation or clear citation from an authoritative Unlambda spec/reference.
+- Use of tangential or generic sources (e.g., GitHub repos, unrelated Stack Overflow results) instead of the language’s official docs.
+- Presentation of page metadata/OCR without extracting the specific operator rules needed.
+- Failure to tie findings to the given code snippet or to verify the expected exact output string.
+- Introduction of unsupported claims about operator behavior (e.g., assigning “termination” behavior to k) without source backing.
+
+2) Error Context Analysis
+- Typical context: User asks for an exact, token-level fix in an esoteric language with strict output requirements.
+- Preceded by: Orchestrator prompts the agent to gather precise operator semantics; WebSurfer returns high-level or irrelevant pages and does not provide concrete, cited definitions.
+- The conversation shows a jump from shallow search results to downstream analysis without a firm, sourced understanding of the specific primitives at issue.
+- Absence of examples or test references that map the operator definitions to the provided code pattern, especially around edge characters (“si”) and exact string termination.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Did the agent provide authoritative, quoted definitions for each operator explicitly requested (., `, r)?
+  - Are the sources directly about Unlambda’s official semantics (e.g., Unlambda homepage/manual) rather than generic or adjacent content?
+  - Do the findings explicitly address the given code snippet pattern and the exact expected output string?
+  - Are any behavioral claims about operators supported by citations/examples?
+  - Is there evidence that the agent verified how trailing tokens (e.g., “si”) affect output in Unlambda?
+
+- Analytical framework:
+  - Source-authoritativeness check: Score sources by proximity to official/spec documentation; flag if absent.
+  - Coverage checklist: For each requested operator, verify presence of definition, example, and relevance to the snippet.
+  - Claim-evidence mapping: Each semantic claim should link to a quote/reference; flag any unbacked claims.
+  - Constraint alignment: Verify that the reported fix aligns with the instruction to return the exact character/text needed and the exact output string.
+
+- Key phrases/patterns indicating risk:
+  - “It seems/likely/might/probably,” “Please review/test to confirm,” “theoretically,” “expected adjustment.”
+  - Summaries that include unrelated languages or topics from search results (e.g., R, C) when asked about Unlambda.
+  - Heavy inclusion of page meta/OCR without distilled, operator-specific rules.
+
+==================================================
+
+=== Schema for Error Log 50 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 5
+Reason for Mistake: Accepted unvetted search engine results (SERP “best match”/aggregator tiles) as factual, without validating hard constraints (exact 1-block radius, vegan mains, under $15, dine-in). The “information obtained” is incorrect because it relies on generic proximity/price-range snippets and review tiles rather than primary menu/price evidence or distance verification. Similar errors can be identified by missing constraint evidence and over-reliance on SERP summaries.
+
+1) Error Signatures
+- Reliance on SERP aggregator tiles (“Best match,” TripAdvisor/Yelp cards) instead of opening sources with verifiable data (menus, maps with exact addresses).
+- Lists of well-known/upscale venues with price bands ($$, $$$) but no item-level prices or vegan qualifiers.
+- Proximity language is vague or generalized (“near,” “West Village,” “Good for…”) with no explicit 1-block verification (address-to-park distance).
+- No evidence of constraint coverage: no vegan item names, no sub-$15 price lines, no dine-in confirmation.
+- Repeated references to search snippets like “View on Larger Map,” “Tripadvisor,” “Delivery • Takeout • Good for…,” indicating summary views rather than validated details.
+
+2) Error Context Analysis
+- Occurs early after an initial broad search where strict filters (distance, diet, price) are hard to satisfy via generic SERP.
+- Triggered by tasks requiring numeric/geospatial and item-level validation (1 block + <$15 + vegan mains + dine-in).
+- Preceded by instructions to “search for restaurants within 1 block…” and followed by adoption of candidates from a generic “near Washington Square Park” list without checking constraints.
+- Leads to downstream drift: time spent on irrelevant or upscale options unlikely to meet price constraint.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Is each constraint (distance, vegan main, under $15, dine-in) supported by explicit evidence (address/distance calc, menu item name + price, service type)?
+  - Are sources primary (official menu pages, PDFs, reliable menu aggregators) rather than SERP tiles/snippets?
+  - Is the distance claim quantified (address vs. park boundary, map check) or just implied by “near”?
+- Analytical framework:
+  - Constraint coverage matrix: Distance | Vegan main | Price (<$15) | Dine-in. Flag any missing evidence.
+  - Source quality check: SERP summary vs. primary documentation. Flag SERP-only as high risk.
+- Key indicators/phrases:
+  - “Best match,” “Tripadvisor,” “Yelp,” “Good for…,” “Delivery • Takeout • …,” “View on Larger Map,” price bands ($$, $$$) without item prices.
+  - Neighborhood labels (e.g., “West Village”) used as proximity proof.
+  - Absence of explicit vegan item names and dollar amounts under $15.
+  - No address-to-park verification or map-distance statements.
+
+==================================================
+
+=== Schema for Error Log 51 ===
+Generated Schema:
+Agent Name: FileSurfer
+Step Number: 5
+Reason for Mistake: Failure to perform the required audio-to-text transcription; the agent only surfaced a viewer error and repeatedly reloaded the file without producing a transcript or extracting the requested data.
+
+- Error Signatures:
+  - Transcript panel shows a placeholder/error such as “Audio Transcript: Error. Could not transcribe this audio.”
+  - Repeated accesses to the same file (Address: file:///workspace/...) with no new content.
+  - Agent provides meta-info (duration) but no spoken text or extracted values.
+  - Shift to giving the user manual playback instructions instead of delivering extracted content.
+  - Final output guesses or fabricates a numeric list unrelated to any transcript.
+
+- Error Context Analysis:
+  - User task explicitly requires parsing an audio file to return structured values (page numbers) in a specific format (comma-delimited, ascending).
+  - File is present and referenced by exact name/path; duration is shown, implying accessibility.
+  - Sequence typically observed:
+    1) Plan assigns FileSurfer to “listen/transcribe.”
+    2) FileSurfer returns the same transcription error message.
+    3) Orchestrator/agents loop on “please play/listen” with identical FileSurfer output.
+    4) Escalation to external web tools stalls on sign-in/UX limits.
+    5) Agent(s) pivot to user instructions or produce an answer without transcript evidence.
+
+- Detection Heuristics:
+  - Questions to ask:
+    - Is there any actual transcribed text from the audio (quotes, sentences, or phrases), or only an error placeholder?
+    - Did the agent extract the requested values with provenance (from transcript), or just provide instructions/guesses?
+    - Do multiple steps show the same “Could not transcribe” message with no change in method or result?
+  - Analytical framework:
+    - Modality-capability alignment check: Task requires audio transcription; did the agent perform audio-to-text or only file viewing?
+    - Requirement-satisfaction check: Does the conversation contain a transcript and the derived, formatted outputs?
+    - Loop detection: Recurrent identical file previews/errors across steps without new evidence.
+    - Provenance check: Are outputs traceable to content from the file, or are they advisory/generic?
+  - Key phrases/patterns indicating the error:
+    - “Audio Transcript: Error. Could not transcribe this audio.”
+    - “Please play/listen to the file…” without subsequent transcript.
+    - “Since we are unable to directly transcribe the audio…”
+    - Repeated “Address: file:///workspace/…mp3” with no new transcript content.
+    - Final answer provided without any preceding transcript evidence.
+
+==================================================
+
+=== Schema for Error Log 52 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 4
+Reason for Mistake:
+- Summary: Low-recall search result selection caused omission of a qualifying venue (Avea Pilates). The SERP showed items outside the required 200m radius and skewed to a narrow category (“gyms”), leading to an incomplete candidate set that excluded Pilates/yoga studios meeting the criteria.
+
+- Error Signatures:
+  - Returned list includes venues with distances clearly >200m (e.g., “· < 1 km”, “1.8 km”) despite a strict radius requirement.
+  - Candidate set is short and dominated by generic “gym” categories; no Pilates/yoga studios appear even though they plausibly exist near the landmark.
+  - The agent treats the first SERP block as authoritative and does not enumerate or acknowledge nearby entities that should be obvious by proximity to the landmark.
+  - The agent repeats clicks within the same SERP card(s) without expanding or diversifying sources, resulting in no new nearby entities being discovered.
+
+- Error Context Analysis:
+  - Context includes a tight spatial constraint combined with a category that has adjacent synonyms (gym/fitness/Pilates/yoga) but the search uses a single, literal keyword (“gyms”) and generic query pattern.
+  - Preceded by an instruction to identify venues within 200m; the SERP returned mixed-distance results and the agent proceeded anyway.
+  - The page itself displays non-compliant distance hints (e.g., 1+ km) and chain locations far from the target area, signaling that the radius filter wasn’t truly applied.
+  - The workflow moves forward to scheduling checks before validating proximity completeness, locking in an incomplete set.
+
+- Detection Heuristics:
+  - Questions to ask:
+    - Do all listed venues explicitly show addresses/distances consistent with <200m from the landmark?
+    - Are adjacent categories (Pilates, yoga, studios) represented among candidates, or is the set narrowly “gyms” only?
+    - Is there any sign of known or likely nearby entities missing given the landmark’s neighborhood density?
+  - Analytical framework:
+    - Constraint compliance check: compare each candidate’s distance/address against the specified radius.
+    - Coverage/recall check: assess category diversity relative to the user’s intent (fitness classes vs strict “gym” label).
+    - SERP sanity check: presence of far-away results indicates the query/result block is not enforcing the radius and likely missing closer entities.
+  - Key indicators in conversation:
+    - Mentions like “· < 1 km”, “1.8 km”, or no distance at all when a 200m cap is required.
+    - Early acceptance of a short list from a single SERP without “See more results,” map exploration, or alternate category terms appearing.
+    - Focus on chain gyms and aggregator snippets (Facebook/Tripadvisor cards) while lacking boutique studios near the park.
+    - Absence of entities containing terms like “Pilates” near the specified landmark despite the fitness-class requirement.
+
+==================================================
+
+=== Schema for Error Log 53 ===
+Generated Schema:
+Agent Name: Assistant
+Step Number: 51
+Reason for Mistake: The agent produced a numeric result by assuming a critical state-dependent property (density) without sourcing values for the exact temperature and pressure required, substituting “typical” or “approximate” data and generic reasoning under extreme conditions. This error pattern is identifiable by vague condition references, absence of citations, and reliance on hand-wavy adjustments rather than state-specific thermophysical data.
+
+1) Error Signatures
+- Language cues:
+  - Uses hedge terms: “approximately,” “roughly,” “we can assume,” “for the sake of simplicity,” “reasonable estimate,” “around ~.”
+  - Generic condition labels: “high pressure,” “near 0°C,” without exact T/P values.
+  - Unsubstantiated generalizations: “density will slightly increase.”
+- Data provenance gaps:
+  - No citation or link for the specific property at the stated T/P.
+  - References “standard reference data” without specifying table, dataset, or equation-of-state.
+- Calculation pattern:
+  - Direct V = m/ρ using a single rounded density (e.g., 1.5 g/mL) with no phase check or compressibility/EoS.
+  - No verification of phase or state at extreme P/T (e.g., Mariana Trench pressures).
+- Workflow behavior:
+  - Occurs after failed or blocked data retrieval attempts.
+  - Rapid convergence to a final integer answer despite missing critical inputs.
+
+2) Error Context Analysis
+- Typical context:
+  - Questions requiring thermophysical properties at extreme or unusual conditions (very high pressure, specific temperature).
+  - Data-access barriers (paywalls, verification pages) or missing datasets for the exact state.
+- Preceding sequence:
+  - Multiple web/tool attempts → access restrictions or inconclusive sources → instruction or self-decision to “approximate” → immediate simple calculation with assumed constants → finalized answer.
+
+3) Detection Heuristics
+- Screening questions:
+  - Did the agent state explicit numeric T and P used for the property value?
+  - Is the property value sourced (citation/table/EoS) for that exact T/P?
+  - Did the agent confirm the phase (liquid/vapor/supercritical) at those conditions?
+  - Was any compressibility or EoS modeling referenced for extreme pressures?
+  - Are there hedge terms indicating assumption rather than evidence?
+- Analytical checks:
+  - Property-Condition Consistency Check (PCC): Compare used property to the requested T/P; flag if “typical” data is used for extreme conditions.
+  - Source Support Check (SSC): Verify presence of a specific source for the exact state; flag if absent.
+  - Extremes Sensitivity Check (ESC): For extreme P/T, expect discussion of non-ideal behavior; flag if ignored.
+  - Tool Outcome Dependence (TOD): If prior data-gathering failed and a final numeric answer appears without new evidence, flag.
+- Key indicators in text:
+  - Phrases: “standard reference data,” “approximate,” “for simplicity,” “likely,” “around,” “high pressure” (without a number), “not readily accessible.”
+  - Patterns: Single-step mass/density computation; rounded densities (e.g., 1.5 g/cm3) applied to exotic conditions; absence of phase/state validation.
+
+==================================================
+
+=== Schema for Error Log 54 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 24
+Reason for Mistake: The agent relied on a “current/active” roster page updated after the target timeframe (e.g., “UPDATE: At the end of 2024 season”) and ignored the user’s explicit temporal constraint (“as of July 2023”). The temporal mismatch between sources and the requested date led to selecting the wrong neighboring jersey numbers.
+
+1. Error Signatures
+- The answer or cited page mentions “current,” “active players,” or shows an update timestamp after the requested date (e.g., “UPDATE: at the end of 2024 season”).
+- The agent does not restate or reference the user’s time qualifier in its reasoning or answer.
+- Sources are general roster pages without season/year qualifiers; no archived or season-specific pages are used.
+- Neighboring players differ from historically known rosters for the specified date.
+- The final answer contains no explicit “as of [date]” validation or cites pages with dates that don’t match the query.
+
+2. Error Context Analysis
+- The user query includes a clear time constraint (“as of July 2023,” “in 2023 season,” etc.).
+- The agent sequence shows: finding team/number → opening “Active/Current Roster” → deriving neighbors from that list → answering, without any season/date filter.
+- Pages visited prominently indicate a later update window (e.g., 2024) or “Active Players” rather than “2023 roster,” “season roster,” or archived snapshots.
+- The agent prematurely marks the task “satisfied” after consulting a non-matching timeframe source.
+
+3. Detection Heuristics
+- Questions to ask:
+  - Does the user’s request contain a specific date/season?
+  - Do the sources used show dates/updates matching that timeframe?
+  - Is the answer explicitly grounded “as of [requested date]”?
+  - Did the agent use “Active/Current” roster pages instead of “2023 roster” or archived pages?
+- Analytical framework:
+  - Temporal Alignment Check: Extract target date from the query; extract source page timestamps/labels; flag if source date > target date or unspecified.
+  - Constraint Echo Check: Verify the agent restates the time constraint in plan/answer; absence suggests drift.
+  - Source-Type Audit: Dynamic/current pages vs season-specific/archived sources; favor the latter for time-bounded questions.
+- Key phrases/patterns indicating risk:
+  - From sources/agent: “Active Players,” “current roster,” “as of now,” “UPDATE: [year later than target],” “end of 2024 season.”
+  - From conversation: No mention of “July 2023,” “2023 roster,” “season roster,” “archived,” “Wayback,” or equivalent date anchoring.
+
+==================================================
+
+=== Schema for Error Log 55 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 18
+Reason for Mistake: The Orchestrator fixated on a single, generic page and repeatedly instructed the browser agent to scroll, instead of issuing targeted searches for each board member’s professional history. This repetition produced little to no new, entity-specific evidence and diverged from the stated plan, leading to an unsupported conclusion.
+
+1) Error Signatures
+- Repetitive action commands:
+  - Multiple consecutive instructions like “continue to scroll” or “navigate through the page” without changing strategy.
+- Instruction–goal mismatch:
+  - Asking for “professional history/C‑suite roles” but only commanding scrolling on an overview page.
+- Single-source overreliance:
+  - Staying on one article with broad content rather than opening member-specific or authoritative sources.
+- Lack of evidence accumulation:
+  - No new, verifiable, entity-specific facts added across steps; no per-person C‑suite yes/no determinations.
+- Loop denial cues:
+  - Ledger asserts “not in a loop” and “progress is being made” while actions and outputs remain essentially unchanged.
+- Entity confusion drift:
+  - Introduction of off-target or incorrect entity names (e.g., Andrea Young vs. Andrea Jung) after low-signal navigation.
+
+2) Error Context Analysis
+- Typical context:
+  - Tasks requiring multi-entity verification (one fact per person) and cross-source confirmation.
+- Preceding sequence:
+  - Initial SERP → click generic overview article → several steps of scrolling → minimal extraction → eventual ad-hoc pivot to a single unrelated profile.
+- Surrounding conditions:
+  - Plan calls for targeted bios/searches; execution repeatedly issues non-specific scrolling on a single page.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Have we issued the same navigation instruction (e.g., “scroll”) 2+ times without yielding new, task-relevant facts?
+  - Have we converted the list of required entities into targeted searches or page opens for each individual?
+  - After N steps, can we list at least one new, sourced fact per required entity? If not, flag.
+  - Are actions confined to one source when the task clearly needs multiple?
+  - Do the stated plan and issued instructions align (search vs. scroll)?
+- Analytical framework:
+  - Plan–Action–Outcome alignment check: compare planned data-gathering steps to actual instructions.
+  - Evidence Coverage Matrix: rows = entities; columns = required facts (C‑suite role prior to joining, title, source). Sparse matrix after repeated steps indicates error.
+  - Action Diversity Metric: count distinct action types over recent steps (search, open, extract, cross-check). Dominance of one low-yield action signals the pattern.
+- Key indicators/phrases:
+  - “Please continue to scroll…” repeated across steps.
+  - “Continue gathering…” with no change in method or source.
+  - “We are not in a loop” while issuing identical commands.
+  - “Next speaker: WebSurfer” across many steps with no new sources opened.
+  - Generic page titles (e.g., “Meet the Apple Board of Directors”) with no extracted per-person bios.
+
+==================================================
+
+=== Schema for Error Log 56 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 4
+Reason for Mistake: The agent returned a generic search results page and/or a page lacking the specific, requested data (and source), causing downstream assumptions and guesswork instead of evidence-based answering.
+
+Error Signatures:
+- The message reports only a query entry and shows a search results page (e.g., “I typed …” + “Here is a screenshot of [Search]”).
+- Page metadata/URL indicates a search engine (bing.com) or non-requested site instead of the specified source (Google Finance/finance.google.com).
+- The content summarized is generic or promotional (e.g., “About X results”, site-wide meta, unrelated snippets) without extracting the target datum (the first year > $50).
+- The page explicitly states data is “adjusted for splits and dividends,” contradicting the “unadjusted” requirement.
+- No concrete year/date is cited; only summaries like “historical overview,” “all-time high,” or 52-week stats.
+- Repeated navigation actions (scrolling/clicking) that do not narrow to the requested metric.
+
+Error Context Analysis:
+- Occurs immediately after an instruction to find a specific fact “According to Google Finance” with a nuance (“without adjusting for stock split”).
+- The agent stops at search results or opens third-party sites (MacroTrends, Forbes, Motley Fool, Yahoo) rather than the specified primary source (Google Finance).
+- Sequence typically is: instruction to find a specific metric → agent types query → returns search results screenshot/summary → no click-through to the exact source/data → orchestration continues with alternative sites → prolonged lack of the specific datum → eventual guess.
+
+Detection Heuristics:
+- Questions to ask:
+  - Is the current page a search results page rather than the target source page?
+  - Does the URL/domain match the required source (finance.google.com) and contain the relevant ticker context?
+  - Does the page explicitly provide unadjusted price data or a clear indicator of adjustment status?
+  - Has the agent extracted a specific year/date for “first above $50,” or only summarized unrelated stats?
+- Analytical framework:
+  - Instruction–Source Alignment Check: Required source named vs. actual domain visited.
+  - Data Specificity Check: Presence of a concrete threshold-crossing year/date vs. generic history.
+  - Adjustment Status Check: Mentions of “adjusted for splits/dividends” when “unadjusted” is required.
+  - Action Completeness Check: “Typed query” or “search results shown” without click-through to the exact dataset.
+  - Loop Signal Check: Repeated scrolling/clicking with no narrowing to the needed metric.
+- Key phrases/patterns indicating the error:
+  - “I typed ‘…’” + “Here is a screenshot of [Search]”
+  - “About [N] results”
+  - “Historical daily share price … adjusted for splits and dividends”
+  - Generic summaries like “provides an overview,” “Stock Price History,” without the target year
+  - Reliance on alternative domains (macrotrends.net, yahoo.com, forbes.com) when instruction specifies “According to Google Finance”
+
+==================================================
+
+=== Schema for Error Log 57 ===
+Generated Schema:
+Agent Name: WebSurfer
+Step Number: 12
+Reason for Mistake: The agent issued broad, unfocused queries that omitted key task constraints (original set/printing, non-foil paper, “all-time high/low”), remained on ad-heavy SERPs, and failed to extract concrete numeric data before the session timed out. Similar errors present as repeated search/result-view cycles without converging on authoritative sources or capturing required fields.
+
+1) Error Signatures
+- Queries are generic (e.g., “<card> Magic: The Gathering price history”) lacking set code/name and format qualifiers.
+- SERP-focused behavior: multiple turns showing screenshots/OCR of search results, ads, or marketplaces (eBay) without clicking authoritative sources.
+- Variant drift: references to “The List,” “extended,” “foil,” or alternate printings not aligned with “original set, non-foil paper.”
+- Absence of data capture: no quoted “All-Time High/Low” values or timestamps after one or more search turns.
+- Missed obvious links: authoritative links (e.g., “Throne of Eldraine (ELD) Price History - MTGGoldfish”) visible but not opened.
+- Time-out or termination (“Max time reached”) following non-productive SERP interactions.
+
+2) Error Context Analysis
+- Typically occurs after scoping is done and the agent transitions to data collection (metrics retrieval).
+- Preceded by successful identification of entities/dates; then tasked to fetch specific numeric fields per item.
+- Sequence pattern: generic query → SERP screenshot/OCR → no drill-down → repeat → run out of time.
+- Context includes multiple items to fetch, increasing likelihood of staying at SERPs rather than extracting data.
+
+3) Detection Heuristics
+- Questions to ask:
+  - Does the latest turn include concrete numeric outputs (“All-time high,” “All-time low”) for the target card?
+  - Does the query string include essential constraints (set name/code, non-foil, paper, “all-time high/low”)?
+  - Has the agent spent 2+ consecutive turns on SERPs without opening an authoritative source?
+  - Are mentioned printings inconsistent with “original set, non-foil paper” (e.g., “The List,” “foil”)?
+- Analytical framework:
+  - Constraint Encoding Check: Compare task constraints vs. tokens in the query; flag missing constraints.
+  - Source Relevance Check: Verify whether clicked/opened domains are authoritative price-history sources.
+  - Progress Delta Check: Track whether successive turns add concrete metrics; flag stagnation if not.
+- Key phrases/patterns:
+  - “I typed …” followed by broad query terms.
+  - “Here is a screenshot… The viewport shows …” with ads/sponsored/eBay panels.
+  - “About N results,” “Sponsored,” “See more” dominating text.
+  - Mentions of wrong variants (“The List,” “extended,” “foil”).
+  - System messages indicating timeout/maximum time reached before any numeric data is captured.
+
+==================================================
+
+=== Schema for Error Log 58 ===
+Generated Schema:
+Agent Name: Orchestrator
+Step Number: 22
+Reason for Mistake: The Orchestrator declared being “stalled” and shifted to meta-level replanning instead of triggering concrete on-page data extraction. Despite being close to the target (in the repository’s Issues context), it did not instruct agents to open a specific issue or read the timeline/events where the “label added” date resides. This manifested as repeated high-level navigation directives and plan restatements without extracting the required field (the label-added date), coupled with reliance on an imprecise label name (“Regression” vs “06 - Regression”).
+
+1) Error Signatures
+- Meta-level churn:
+  - Phrases like “Stalled… Replanning…” or repeated “Updated Ledger” entries with no new factual data.
+  - Re-issuing high-level navigation steps (“go to Issues,” “filter by label”) after already reaching the relevant area.
+- Missing extraction action:
+  - No instruction to “open the issue,” “scroll timeline,” or “read event logs.”
+  - Absence of concrete outputs (issue number, date strings) after landing on relevant pages.
+- Label mismatch symptoms:
+  - Filters like label:Regression return zero results while the repo uses a variant (e.g., “06 - Regression”).
+- Premature strategy switching:
+  - Jumping to alternative channels (advanced search/API) without first extracting available on-page details.
+
+2) Error Context Analysis
+- Typical conditions:
+  - The agent has navigated to the correct repository/Issues page (or close) but has not executed page-level inspection (timeline/events).
+  - Tasks require reading GitHub issue event history (e.g., “X added the Y label on DATE”), but the agent remains at list/search level.
+- Preceding sequence:
+  - Multiple navigation or filtering attempts → “No results” or partial progress → Orchestrator declares stall/replan → Restates plan without specifying on-page extraction → No concrete date captured.
+
+3) Detection Heuristics
+- Diagnostic questions:
+  - Are we already on a page that likely contains the datum (issue page) but haven’t issued a command to read the timeline/events?
+  - Have we produced any concrete artifact (issue ID, explicit date) after reaching the Issues context?
+  - Are we repeating generic navigation instructions without a targeted “extract timeline date” action?
+  - Did a label filter return 0 results while the repo’s label list suggests a differently named/numbered label?
+- Analytical framework:
+  - Navigation vs. Extraction gap: If navigation has reached the relevant resource but no extraction step occurs within 1–2 turns, flag as “extraction omission.”
+  - Label verification checkpoint: If a label-based search yields no results, verify repository label names before replanning; a mismatch indicates this error class risk.
+- Key phrases/patterns to flag:
+  - “Stalled…”, “Replanning…”, “No progress being made…”
+  - Repeated “Please navigate to the Issues section…” after already being there.
+  - Vague goals (“identify the oldest issue”) without actionable extraction verbs (“open issue #…”, “scroll to timeline,” “capture ‘added label’ date”).
+  - Search queries with label:Regression yielding 0 matches alongside presence of labels like “06 - Regression” in the repo’s label list.
+
+==================================================
+

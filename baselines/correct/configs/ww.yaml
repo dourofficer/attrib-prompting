@@ -1,0 +1,57 @@
+models:  [qwen3.5-9b, deepseek-8b]
+subsets: [algorithm-generated, hand-crafted]
+
+data_dir:     data/ww
+outputs_root: outputs-ww/correct
+
+# Retrieved schemata per query — the paper's Who&When settings
+# (Algorithm-Generated k=1, Hand-Crafted k=10). 0 = no-schema baseline mode.
+num_schemata:
+  algorithm-generated: 1
+  hand-crafted: 10
+# Who&When script retrieval: inspect only the top-k neighbours (the
+# CORRECT-Error script's scan-until-filled variant is equivalent when every
+# trajectory has a schema, which our per-model caches guarantee).
+scan_until_filled: false
+
+# Offline schema generation (vendored SamplingParams: 0.7 / 0.95 / 1024).
+schema_gen:
+  temperature: 0.7
+  top_p:       0.95
+  max_tokens:  1024
+
+# Trajectory embeddings for retrieval (vendored default: BAAI/bge-m3).
+embed_model_path: ../hub/BAAI/bge-m3
+
+# Inference is greedy in the vendored vLLM path → temperature 0.0.
+dtype:          bfloat16
+seed:           0
+temperature:    0.0
+top_p:          1.0
+gen_max_tokens: 1024
+enable_thinking: false          # toggle reasoning here (honored where the template supports it)
+
+# Longest full-history prompt is tens of thousands of tokens; both checkpoints
+# natively support >=128k, so 131072 covers every trajectory with no truncation
+# (the vendored YaRN rope hack was a Qwen2.5-32k workaround — not needed).
+max_model_len:          131072
+truncate_prompt_tokens: null
+gpu_memory_utilization: 0.90
+tensor_parallel_size:   1
+
+start_idx: 0
+end_idx:   null
+
+model_paths:
+  qwen3.5-9b:   ../hub/Qwen/Qwen3.5-9B
+  qwen3-8b:     ../hub/Qwen/Qwen3-8B
+  qwen3-14b:    ../hub/Qwen/Qwen3-14B
+  qwen3-27b:    ../hub/Qwen/Qwen3-27B
+  llama-3.1-8b: ../hub/meta-llama/Llama-3.1-8B-Instruct
+  deepseek-8b:  ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+
+# Corrected tokenizer for deepseek-8b (same fix the prompting baseline uses):
+# its checkpoint tokenizer_config forces a SentencePiece tokenizer that mangles
+# spaces; this repo-local copy fixes only tokenizer_class.
+tokenizer_paths:
+  deepseek-8b: baselines/prompting/tokenizers/deepseek-8b

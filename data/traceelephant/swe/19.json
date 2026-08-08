@@ -1,0 +1,72 @@
+{
+  "question_ID": "django__django-11848",
+  "question": "django.utils.http.parse_http_date two digit year check is incorrect\nDescription\n\t \n\t\t(last modified by Ad Timmering)\n\t \nRFC 850 does not mention this, but in RFC 7231 (and there's something similar in RFC 2822), there's the following quote:\nRecipients of a timestamp value in rfc850-date format, which uses a\ntwo-digit year, MUST interpret a timestamp that appears to be more\nthan 50 years in the future as representing the most recent year in\nthe past that had the same last two digits.\nCurrent logic is hard coded to consider 0-69 to be in 2000-2069, and 70-99 to be 1970-1999, instead of comparing versus the current year.",
+  "history": [
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed/django/utils\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed/django/utils/http.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed/django/utils/http.py\",\n  \"view_range\": [\n    158,\n    191\n  ]\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"str_replace\",\n  \"path\": \"/testbed/django/utils/http.py\",\n  \"old_str\": \"        if year < 100:\\\\n            if year < 70:\\\\n                year += 2000\\\\n            else:\\\\n                year += 1900\",\n  \"new_str\": \"        if year < 100:\\\\n            current_year = datetime.datetime.now().year % 100\\\\n            century = datetime.datetime.now().year // 100 * 100\\\\n            if year > current_year + 50:\\\\n                year += century - 100\\\\n            else:\\\\n                year += century\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"create\",\n  \"path\": \"/testbed/test_parse_http_date.py\",\n  \"file_text\": \"from django.utils.http import parse_http_date\\n\\n# Test dates\\n# Assuming the current year is 2023, the year '70' should be interpreted as 1970\\n# and the year '69' should be interpreted as 2069\\n\\ntest_dates = [\\n    'Sun, 06 Nov 94 08:49:37 GMT',  # Should be 1994\\n    'Wed, 09 Feb 22 10:00:00 GMT',  # Should be 2022\\n    'Thu, 01 Jan 70 00:00:00 GMT',  # Should be 1970\\n    'Fri, 31 Dec 69 23:59:59 GMT',  # Should be 2069\\n]\\n\\nfor date in test_dates:\\n    try:\\n        timestamp = parse_http_date(date)\\n        print(f\\\"{date} -> {timestamp} -> {datetime.datetime.utcfromtimestamp(timestamp)}\\\")\\n    except ValueError as e:\\n        print(f\\\"Error parsing date {date}: {e}\\\")\\n\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/test_parse_http_date.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"str_replace\",\n  \"path\": \"/testbed/test_parse_http_date.py\",\n  \"old_str\": \"test_dates = [\\n    'Sun, 06 Nov 94 08:49:37 GMT',  # Should be 1994\\n    'Wed, 09 Feb 22 10:00:00 GMT',  # Should be 2022\\n    'Thu, 01 Jan 70 00:00:00 GMT',  # Should be 1970\\n    'Fri, 31 Dec 69 23:59:59 GMT',  # Should be 2069\\n]\",\n  \"new_str\": \"test_dates = [\\n    'Sun, 06 Nov 1994 08:49:37 GMT',  # RFC1123 format\\n    'Sunday, 06-Nov-94 08:49:37 GMT',  # RFC850 format, should be 1994\\n    'Wed, 09 Feb 2022 10:00:00 GMT',  # RFC1123 format\\n    'Thursday, 01-Jan-70 00:00:00 GMT',  # RFC850 format, should be 1970\\n    'Friday, 31-Dec-69 23:59:59 GMT',  # RFC850 format, should be 2069\\n]\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/test_parse_http_date.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"str_replace\",\n  \"path\": \"/testbed/test_parse_http_date.py\",\n  \"old_str\": \"from django.utils.http import parse_http_date\\\\n\",\n  \"new_str\": \"from django.utils.http import parse_http_date\\\\nimport datetime\\\\n\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/test_parse_http_date.py\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "{'role': 'assistant', 'content': None}"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call submit(\n{}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"rm /testbed/test_parse_http_date.py\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call submit(\n{}\n)"
+    }
+  ],
+  "mistake_agent": "str_replace_editor",
+  "mistake_step": 12,
+  "level": -1,
+  "system": "**SWE-Agent** is an autonomous LLM-based agent designed to solve real-world software engineering tasks by interacting directly with code repositories and execution environments.\n\n### Core Mechanism\n\nThe agent operates through an **environment-grounded reasoning loop**:\n\n1. **Problem Ingestion**: Takes a natural-language issue description (e.g., GitHub issue) as input, defining task objectives and constraints.\n2. **Hypothesis Formation**: Analyzes the problem and formulates potential root causes or solution strategies.\n3. **Action Execution**: Performs concrete operations via tools—browsing files, searching code, editing sources, running tests/commands.\n4. **Feedback Integration**: Inspects tool outputs (test failures, runtime errors) to validate or reject hypotheses.\n\n### Execution Pattern\n\nSWE-Agent follows a **ReAct-style iterative loop**:\n\n* **Reason**: Analyze current state and hypothesize next steps based on available evidence.\n* **Act**: Execute concrete actions through the tool interface to gather information or modify code.\n* **Observe**: Process execution results and update internal reasoning state accordingly.\n* The loop continues until tests pass or the agent determines task completion, then outputs a final code patch.\n\n### Why It Works\n\n* **Environment-grounded feedback** serves as the primary validation signal, avoiding speculative solutions\n* Enables **incremental debugging** through iterative hypothesis testing\n* **Tool-mediated interaction** ensures all reasoning is backed by real repository evidence\n* Scales to realistic software engineering scenarios requiring exploration and verification\n\n> In short, **SWE-Agent is an environment-grounded, iterative reasoning agent** designed for autonomous software engineering task solving.",
+  "subset": "swe",
+  "mistake_reason": "The mistake was not testing the fixed date function with different current years, leading to incorrect assumptions about interpreting years like '1970' as '2070'."
+}

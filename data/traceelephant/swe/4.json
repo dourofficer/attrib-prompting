@@ -1,0 +1,100 @@
+{
+  "question_ID": "django__django-10999",
+  "question": "Fix parse_duration() for some negative durations\nDescription\n\t\nThe ​https://docs.djangoproject.com/en/2.1/_modules/django/utils/dateparse/ defines:\nstandard_duration_re = re.compile(\n\tr'^'\n\tr'(?:(?P<days>-?\\d+) (days?, )?)?'\n\tr'((?:(?P<hours>-?\\d+):)(?=\\d+:\\d+))?'\n\tr'(?:(?P<minutes>-?\\d+):)?'\n\tr'(?P<seconds>-?\\d+)'\n\tr'(?:\\.(?P<microseconds>\\d{1,6})\\d{0,6})?'\n\tr'$'\n)\nthat doesn't match to negative durations, because of the <hours> definition final (lookahead) part does not have '-?' in it. The following will work:\n\tr'((?:(?P<hours>-?\\d+):)(?=-?\\d+:-?\\d+))?'\n(Thanks to Konstantin Senichev for finding the fix.)",
+  "history": [
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed/django/utils\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed/django/utils/dateparse.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\"command\":\"create\",\"path\":\"/testbed/reproduce_error.py\",\"file_text\":\"from django.utils.dateparse import parse_duration\\\\n\\\\n# Test case for negative duration\\\\nnegative_duration = \\\\\"-1:00:00\\\\\"\\\\n\\\\n# Attempt to parse the negative duration\\\\nresult = parse_duration(negative_duration)\\\\n\\\\n# Print the result\\\\nprint(\\\\\"Parsed duration:\\\\\", result)\"}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/reproduce_error.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"str_replace\",\n  \"path\": \"/testbed/django/utils/dateparse.py\",\n  \"old_str\": \"r'((?:(?P<hours>-?\\\\d+):)(?=\\\\d+:\\\\d+))?'\",\n  \"new_str\": \"r'((?:(?P<hours>-?\\\\d+):)(?=-?\\\\d+:-?\\\\d+))?'\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/reproduce_error.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed/django/utils/dateparse.py\",\n  \"view_range\": [\n    124,\n    147\n  ]\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"str_replace\",\n  \"path\": \"/testbed/django/utils/dateparse.py\",\n  \"old_str\": \"kw = {k: float(v) for k, v in kw.items() if v is not None}\\\\n        return days + sign * datetime.timedelta(**kw)\",\n  \"new_str\": \"kw = {k: float(v) * sign for k, v in kw.items() if v is not None}\\\\n        return days + datetime.timedelta(**kw)\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/reproduce_error.py\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call str_replace_editor(\n{\n  \"command\": \"str_replace\",\n  \"path\": \"/testbed/django/utils/dateparse.py\",\n  \"old_str\": \"days = datetime.timedelta(float(kw.pop('days', 0) or 0))\",\n  \"new_str\": \"days = datetime.timedelta(days=float(kw.pop('days', 0) or 0))\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/reproduce_error.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"str_replace\",\n  \"path\": \"/testbed/django/utils/dateparse.py\",\n  \"old_str\": \"kw = {k: float(v) * sign for k, v in kw.items() if v is not None}\\\\n        return days + datetime.timedelta(**kw)\",\n  \"new_str\": \"kw = {k: float(v) for k, v in kw.items() if v is not None}\\\\n        return sign * (days + datetime.timedelta(**kw))\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call bash(\n{\n  \"command\": \"python /testbed/reproduce_error.py\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "{'role': 'assistant', 'content': None}"
+    },
+    {
+      "role": "submit",
+      "content": "[submit] tool_call submit(\n{}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"view\",\n  \"path\": \"/testbed/reproduce_error.py\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\n  \"command\": \"create\",\n  \"path\": \"/testbed/reproduce_error.py\",\n  \"file_text\": \"\"\n}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call str_replace_editor(\n{\"command\":\"str_replace\",\"path\":\"/testbed/reproduce_error.py\",\"old_str\":\"from django.utils.dateparse import parse_duration\\\\n\\\\n# Test case for negative duration\\\\nnegative_duration = \\\\\"-1:00:00\\\\\"\\\\n\\\\n# Attempt to parse the negative duration\\\\nresult = parse_duration(negative_duration)\\\\n\\\\n# Print the result\\\\nprint(\\\\\"Parsed duration:\\\\\", result)\",\"new_str\":\"\"}\n)"
+    },
+    {
+      "role": "str_replace_editor",
+      "content": "[str_replace_editor] tool_call bash(\n{\n  \"command\": \"rm /testbed/reproduce_error.py\"\n}\n)"
+    },
+    {
+      "role": "bash",
+      "content": "[bash] tool_call submit(\n{}\n)"
+    }
+  ],
+  "mistake_agent": "bash",
+  "mistake_step": 10,
+  "level": -1,
+  "system": "**SWE-Agent** is an autonomous LLM-based agent designed to solve real-world software engineering tasks by interacting directly with code repositories and execution environments.\n\n### Core Mechanism\n\nThe agent operates through an **environment-grounded reasoning loop**:\n\n1. **Problem Ingestion**: Takes a natural-language issue description (e.g., GitHub issue) as input, defining task objectives and constraints.\n2. **Hypothesis Formation**: Analyzes the problem and formulates potential root causes or solution strategies.\n3. **Action Execution**: Performs concrete operations via tools—browsing files, searching code, editing sources, running tests/commands.\n4. **Feedback Integration**: Inspects tool outputs (test failures, runtime errors) to validate or reject hypotheses.\n\n### Execution Pattern\n\nSWE-Agent follows a **ReAct-style iterative loop**:\n\n* **Reason**: Analyze current state and hypothesize next steps based on available evidence.\n* **Act**: Execute concrete actions through the tool interface to gather information or modify code.\n* **Observe**: Process execution results and update internal reasoning state accordingly.\n* The loop continues until tests pass or the agent determines task completion, then outputs a final code patch.\n\n### Why It Works\n\n* **Environment-grounded feedback** serves as the primary validation signal, avoiding speculative solutions\n* Enables **incremental debugging** through iterative hypothesis testing\n* **Tool-mediated interaction** ensures all reasoning is backed by real repository evidence\n* Scales to realistic software engineering scenarios requiring exploration and verification\n\n> In short, **SWE-Agent is an environment-grounded, iterative reasoning agent** designed for autonomous software engineering task solving.",
+  "subset": "swe",
+  "mistake_reason": "The error occurred because the applied fix unnecessarily altered the function logic after correcting the regex, leading to improper handling of negative durations."
+}
