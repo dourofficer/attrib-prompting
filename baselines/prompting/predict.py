@@ -26,7 +26,7 @@ import json
 import time
 from pathlib import Path
 
-from src.utils.common import _get_sorted_json_files, _load_json_data
+from baselines.common import _get_sorted_json_files, _load_json_data
 
 from .engine import PromptEngine
 from .methods import METHODS

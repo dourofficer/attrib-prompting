@@ -38,7 +38,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from src.utils.utils import split_data, standardize_role
+from baselines.common import split_data, standardize_role
 
 METHODS_DEFAULT = ["all_at_once", "step_by_step", "binary_search"]
 
