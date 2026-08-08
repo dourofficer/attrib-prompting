@@ -1,9 +1,9 @@
 """Program/driver behavior: call logs, batching shape, streaming equivalence."""
 from __future__ import annotations
 
-from baselines.prompting.backends.dummy import DummyBackend
 from baselines.prompting.methods import METHODS
-from baselines.prompting.runner import run_batched, run_streaming
+from baselines.shared.backends.dummy import DummyBackend
+from baselines.shared.runner import run_batched, run_streaming
 
 
 def _records(lengths: list[int]) -> list[dict]:

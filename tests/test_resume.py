@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from baselines.prompting.runner import OutputWriter
+from baselines.shared.runner import OutputWriter
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

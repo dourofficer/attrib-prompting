@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from baselines.prompting.backends.openai_api import OpenAIBackend
+from baselines.shared.backends.openai_api import OpenAIBackend
 
 
 def _resp(text: str):

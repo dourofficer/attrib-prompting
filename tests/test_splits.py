@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from baselines.common import split_data
+from baselines.shared.common import split_data
 from baselines.prompting.report import universe_files, val_test_ids
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

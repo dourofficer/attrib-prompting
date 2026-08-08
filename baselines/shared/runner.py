@@ -1,6 +1,7 @@
 """Drivers that execute method programs, plus the per-trajectory output writer.
 
-Two drivers over the same generator programs (:mod:`.methods`):
+Two drivers over the same generator programs (e.g.
+:mod:`baselines.prompting.methods`):
 
 - :func:`run_batched` — lockstep rounds for local engines (vLLM). Each round
   concatenates every live program's prompts *in record order* into ONE

@@ -20,12 +20,12 @@ Predictions cover every trajectory; evaluation against the per-seed splits
   - `methods.py` — the verbatim Who&When prompts/parsers, plus the three methods
     as **per-trajectory generator programs** (yield one round's prompts, receive
     responses, return prediction + full call log). Also `strip_think`.
-  - `runner.py` — the two drivers (`run_batched` lockstep for vLLM,
-    `run_streaming` thread-pool for APIs) and `OutputWriter` (atomic
-    per-trajectory files; file existence = resume ledger).
-  - `backends/` — `vllm` / `openai` / `dummy` behind one
-    `generate(message_lists) -> list[str]` protocol; adding a provider that
-    speaks the OpenAI protocol is a config entry, not code.
+  - `../shared/` — the method-agnostic infrastructure this baseline runs on
+    (and chief/correct will too): `runner.py` (lockstep vLLM driver, streaming
+    API driver, atomic per-trajectory `OutputWriter`; file existence = resume
+    ledger) and `backends/` (`vllm` / `openai` / `dummy` behind one
+    `generate(message_lists) -> list[str]` protocol; an OpenAI-compatible
+    provider is a config entry, not code).
   - `predict.py` — runner: one `(model, subset, method)` per invocation →
     `{output}/{method}/<id>.json` per trajectory + `_run.json` snapshot.
   - `report.py` — completion check + per-seed val/test/full tables.

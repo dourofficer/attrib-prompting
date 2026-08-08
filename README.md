@@ -120,19 +120,22 @@ no GPU; `scripts/import_legacy_jsonl.py` converts old
 ## Layout
 
 ```
-baselines/common.py            vendored helpers (file listing, split_data, standardize_role)
+baselines/shared/              method-agnostic infrastructure (used by all baselines)
+  common.py                    vendored helpers (file listing, split_data, standardize_role)
+  backends/                    vllm | openai | dummy behind one generate() protocol
+  runner.py                    batched (vLLM) & streaming (API) drivers, output writer
 baselines/prompting/
   methods.py                   verbatim prompts/parsers + the three method programs
-  runner.py                    batched (vLLM) & streaming (API) drivers, output writer
-  backends/                    vllm | openai | dummy behind one generate() protocol
   predict.py  sweep.py         inference CLI + config-driven grid
   report.py   reparse.py       evaluation + raw re-parsing
   configs/                     per-dataset inference & report configs
+                               (<ds>.yaml = local vLLM, <ds>-api.yaml = closed-source APIs)
   scripts/                     per-model wrappers (GPU/DATASETS/DRY_RUN env knobs)
 baselines/{chief,correct}/     further baselines, not yet adapted to this layout
 data/                          the corpora (never regenerated)
 vendored/                      upstream baseline codebases, kept verbatim
 outputs/                       committed inference outputs + report tables
+scripts/                       per-method front doors (MODEL/DATASET/SUBSET env) + utilities
 tests/                         CPU-only, keyless (pytest)
 ```
 

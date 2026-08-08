@@ -39,7 +39,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from baselines.common import _get_sorted_json_files, split_data, standardize_role
+from baselines.shared.common import _get_sorted_json_files, split_data, standardize_role
 
 METHODS_DEFAULT = ["all_at_once", "step_by_step", "binary_search"]
 

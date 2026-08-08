@@ -49,11 +49,11 @@ from pathlib import Path
 
 import yaml
 
-from baselines.common import _get_sorted_json_files, _load_json_data
+from baselines.shared.backends import get_backend
+from baselines.shared.common import _get_sorted_json_files, _load_json_data
+from baselines.shared.runner import OutputWriter, run_batched, run_streaming
 
-from .backends import get_backend
 from .methods import METHODS
-from .runner import OutputWriter, run_batched, run_streaming
 
 
 def _bool(x: str) -> bool:

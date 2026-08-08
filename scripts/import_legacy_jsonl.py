@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from baselines.prompting.runner import OutputWriter  # noqa: E402
+from baselines.shared.runner import OutputWriter  # noqa: E402
 
 
 def _parse_rows(pf: Path) -> list[dict]:

@@ -1,4 +1,4 @@
-"""Inference backends for the prompting baselines.
+"""Inference backends shared by all baselines.
 
 A backend is anything with:
 
