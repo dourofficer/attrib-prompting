@@ -21,10 +21,9 @@ fi
 EXTRA=("$@")                          # any further args passed straight to the sweep
 
 # DeepSeek-R1-Distill always emits a <think> block, and gen_max_tokens caps
-# thinking + answer combined. 1024 (fine for non-thinking qwen) would be eaten by
-# reasoning before the answer is produced, yielding empty/unparsable output. Give
-# it enough headroom to finish reasoning AND emit the answer. Override via env:
-# GEN_MAX_TOKENS=... or append your own --set gen_max_tokens=... in EXTRA_SET.
+# thinking + answer combined. The model spec in each config already sets 8192
+# (1024 would be eaten by reasoning before the answer is produced); this env
+# knob overrides the spec value if you need a different budget.
 GEN_MAX_TOKENS="${GEN_MAX_TOKENS:-8192}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -46,7 +45,7 @@ for ds in "${DATASETS[@]}"; do
     uv run python -m baselines.prompting.sweep \
       --config "baselines/prompting/configs/${ds}.yaml" \
       --set "models=[${MODEL}]" \
-      --set "gen_max_tokens=${GEN_MAX_TOKENS}" \
+      --set "model_specs.deepseek-8b.gen_max_tokens=${GEN_MAX_TOKENS}" \
       "${DRY[@]}" "${EXTRA_SET_ARR[@]}" "${EXTRA[@]}" 2>&1 | tee "${log}"
   echo "<<< [$(date '+%F %T')] done ${MODEL} / ${ds}"
 done
