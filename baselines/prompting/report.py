@@ -1,29 +1,30 @@
-"""Completion check + per-seed comparison tables for the prompting baselines.
+"""Completion check + per-seed evaluation tables for the prompting baselines.
 
-Two jobs:
+Inference (``predict.py``) covers every trajectory and is split-agnostic; this
+is the evaluation half. Two jobs:
 
 1. **Completion check** — for every ``(model, subset, method)``, report whether
-   ``predictions_method-{method}.jsonl`` finished (row count vs #trajectories) and
-   how many rows are unparsed (``predicted_step is None``). ``--check-only`` runs
-   just this.
+   the per-trajectory outputs are complete (file count vs corpus size) and how
+   many are unparsed (``predicted_step is None``). ``--check-only`` runs just
+   this.
 
-2. **Per-seed comparison tables** — for each ``(model, subset)`` emit one wide
-   table with **one row per seed**, placing the three prompting methods next to
-   SVD and CRR on the *identical* per-seed val/test splits, so the comparison is
-   fair. Values are fractions in [0,1] (matching the CRR reduced tables).
+2. **Per-seed tables** — for each ``(model, subset)`` emit one table with one
+   row per seed: step@1 / agent@1 on that seed's val/test splits, plus
+   split-independent ``*_full`` columns over the whole corpus (constant across
+   seed rows; they survive the mean into the summary unchanged).
 
-Split reproduction is byte-identical to ``src/svd/reproduce.py`` /
-``experiments/svd/run_all_positions.py``:
+Split reproduction mirrors the attribscope project exactly:
 
-    files = sorted(reps_dir.glob("*.safetensors"), key=lambda x: int(x.stem))  # basenames
-    trval, test = split_data(files, train+val, seed)          # test = 2nd slice
-    _train, val = split_data(trval, train/(train+val), seed)  # val  = 2nd slice
+    files = corpus filenames sorted by int(stem)           # the universe
+    trval, test = split_data(files, train+val, seed)       # test = 2nd slice
+    _train, val = split_data(trval, train/(train+val), seed)  # val = 2nd slice
 
-The reps id-set equals the full data (extraction covered every trajectory), so the
-split is model-independent — we use ``split_model`` (qwen3.5-9b, present for every
-dataset) as the canonical id-source for both models' baselines. SVD/CRR numbers are
-pulled from ``{crr_reduced_root}/{model}/{subset}/svd.tsv`` (best pooling per seed by
-``disc_step_acc_test``); absent → those columns are blank (baseline-only fallback).
+The universe comes from ``data/<ds>/<subset>/*.json`` — verified identical to
+the id-set the attribscope splits are built over — so no artifacts outside
+this repo are needed. Matching rules also mirror attribscope's main_table.py:
+agent@1 normalizes with ``standardize_role``/strip/lower and accepts the gold
+name as a substring of the prediction; step@1 is integer equality (gold steps
+are strings in ww); a missing prediction counts as wrong.
 
 Usage
 -----
@@ -38,7 +39,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from baselines.common import split_data, standardize_role
+from baselines.common import _get_sorted_json_files, split_data, standardize_role
 
 METHODS_DEFAULT = ["all_at_once", "step_by_step", "binary_search"]
 
@@ -55,7 +56,7 @@ def load_cfg(path: Path, overrides: list[str]) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Matching (mirrors vendored evaluate.py, with standardize_role normalization)
+# Matching (mirrors attribscope src/reports/main_table.py — keep in lockstep)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _norm_agent(x) -> str | None:
@@ -80,36 +81,6 @@ def _step_hit(pred, gold) -> bool:
         return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# IO + split reproduction
-# ─────────────────────────────────────────────────────────────────────────────
-
-def load_predictions(pred_file: Path) -> dict[str, dict]:
-    """id -> prediction row."""
-    preds: dict[str, dict] = {}
-    with pred_file.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
-            preds[str(row["id"])] = row
-    return preds
-
-
-def reps_file_list(reps_dir: Path) -> list[str]:
-    """Same construction SVD's reproduce.py uses: names sorted by int stem."""
-    files = sorted(reps_dir.glob("*.safetensors"), key=lambda x: int(x.stem))
-    return [f.name for f in files]
-
-
-def val_test_ids(files: list[str], train: float, val: float, seed: int) -> tuple[list[str], list[str]]:
-    """Reproduce (val_ids, test_ids) exactly as src/svd/reproduce.py does."""
-    trval, test = split_data(files, train + val, seed)
-    _train, va = split_data(trval, train / (train + val), seed)
-    return [Path(f).stem for f in va], [Path(f).stem for f in test]
-
-
 def _acc(ids: list[str], preds: dict[str, dict]) -> tuple[int, float, float]:
     """Return (n, agent_frac, step_frac) over `ids` (missing pred = wrong)."""
     agent_c = step_c = 0
@@ -124,40 +95,43 @@ def _acc(ids: list[str], preds: dict[str, dict]) -> tuple[int, float, float]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SVD + CRR merge (from the discounted reduced tables)
+# IO + split reproduction
 # ─────────────────────────────────────────────────────────────────────────────
 
-_CRR_COLS = {
-    "svd_step_val": "undisc_step_acc_val",   "svd_step_test": "undisc_step_acc_test",
-    "svd_agent_val": "undisc_agent_acc_val", "svd_agent_test": "undisc_agent_acc_test",
-    "crr_step_val": "disc_step_acc_val",     "crr_step_test": "disc_step_acc_test",
-    "crr_agent_val": "disc_agent_acc_val",   "crr_agent_test": "disc_agent_acc_test",
-}
+def load_predictions(method_dir: Path) -> dict[str, dict]:
+    """id -> prediction doc from a per-trajectory output directory."""
+    preds: dict[str, dict] = {}
+    for path in method_dir.glob("*.json"):
+        if not path.stem.isdigit():  # skip _run.json and other metadata
+            continue
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        preds[str(doc["id"])] = doc
+    return preds
 
 
-def load_crr_svd(reduced_file: Path) -> dict[int, dict]:
-    """seed -> {svd_*, crr_*} using the best-pooling row per seed (by disc_step_acc_test)."""
-    if not reduced_file.exists():
-        return {}
-    df = pd.read_csv(reduced_file, sep="\t")
-    out: dict[int, dict] = {}
-    for seed, g in df.groupby("seed"):
-        g = g.sort_values(["disc_step_acc_test", "disc_agent_acc_test"], ascending=False)
-        r = g.iloc[0]
-        out[int(seed)] = {k: float(r[src]) for k, src in _CRR_COLS.items()}
-    return out
+def universe_files(data_dir: Path) -> list[str]:
+    """The split universe: corpus filenames, numerically sorted (verified
+    identical to the id-set the attribscope splits are computed over)."""
+    return _get_sorted_json_files(data_dir)
 
 
-def canonical_seeds(cfg: dict, subset: str) -> list[int]:
-    """Seed set to report on. Config `seeds` wins; else the split_model's CRR table; else 1..10."""
-    if cfg.get("seeds"):
-        return list(dict.fromkeys(cfg["seeds"]))  # dedupe, keep order
-    sm = cfg.get("split_model", "qwen3.5-9b")
-    if cfg.get("crr_reduced_root"):
-        red = Path(cfg["crr_reduced_root"]) / sm / subset / "svd.tsv"
-        if red.exists():
-            return sorted(int(s) for s in pd.read_csv(red, sep="\t")["seed"].unique())
-    return list(range(1, 11))
+def val_test_ids(files: list[str], train: float, val: float, seed: int) -> tuple[list[str], list[str]]:
+    """Reproduce (val_ids, test_ids) exactly as attribscope does."""
+    trval, test = split_data(files, train + val, seed)
+    _train, va = split_data(trval, train / (train + val), seed)
+    return [Path(f).stem for f in va], [Path(f).stem for f in test]
+
+
+def canonical_seeds(cfg: dict) -> list[int]:
+    seeds = cfg.get("seeds")
+    if not seeds:
+        raise SystemExit("report config must set `seeds` explicitly "
+                         "(ww/traceelephant: 1..20, correct-error: 1..3)")
+    return list(dict.fromkeys(seeds))  # dedupe, keep order
+
+
+def method_dir(cfg: dict, model: str, subset: str, method: str) -> Path:
+    return Path(cfg["pred_root"]) / subset / model / method
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,19 +139,17 @@ def canonical_seeds(cfg: dict, subset: str) -> list[int]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def completion_status(cfg: dict) -> pd.DataFrame:
-    split_model = cfg.get("split_model", "qwen3.5-9b")
     methods = cfg.get("methods", METHODS_DEFAULT)
     rows = []
     for model in cfg["models"]:
         for subset in cfg["subsets"]:
-            reps_dir = Path(cfg["reps_root"]) / split_model / subset
-            expected = len(reps_file_list(reps_dir)) if reps_dir.exists() else None
+            expected = len(universe_files(Path(cfg["data_dir"]) / subset))
             for method in methods:
-                pf = Path(cfg["pred_root"]) / model / subset / f"predictions_method-{method}.jsonl"
-                if not pf.exists():
+                md = method_dir(cfg, model, subset, method)
+                if not md.is_dir():
                     status, nrows, no_pred, fmt_fail = "MISSING", 0, 0, 0
                 else:
-                    preds = load_predictions(pf)
+                    preds = load_predictions(md)
                     nrows = len(preds)
                     none_rows = [r for r in preds.values() if r.get("predicted_step") is None]
                     # no_pred: model emitted no prediction. Split into the benign
@@ -187,12 +159,7 @@ def completion_status(cfg: dict) -> pd.DataFrame:
                     # instead of following the template).
                     no_pred = sum(1 for r in none_rows if r.get("raw") is None)
                     fmt_fail = sum(1 for r in none_rows if r.get("raw") is not None)
-                    if expected is None:
-                        status = f"DONE?({nrows})"
-                    elif nrows >= expected:
-                        status = "DONE"
-                    else:
-                        status = f"PARTIAL({nrows}/{expected})"
+                    status = "DONE" if nrows >= expected else f"PARTIAL({nrows}/{expected})"
                 rows.append({"model": model, "subset": subset, "method": method,
                              "status": status, "rows": nrows, "expected": expected,
                              "no_pred": no_pred, "fmt_fail": fmt_fail})
@@ -200,55 +167,60 @@ def completion_status(cfg: dict) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Per-(model,subset) comparison table — one row per seed
+# Per-(model,subset) table — one row per seed
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_table(model: str, subset: str, cfg: dict) -> pd.DataFrame | None:
-    split_model = cfg.get("split_model", "qwen3.5-9b")
-    reps_dir = Path(cfg["reps_root"]) / split_model / subset
-    if not reps_dir.exists():
-        print(f"  [{model}/{subset}] no reps for split ({reps_dir}) — skip")
+    files = universe_files(Path(cfg["data_dir"]) / subset)
+    if not files:
+        print(f"  [{model}/{subset}] no corpus files under {cfg['data_dir']}/{subset} — skip")
         return None
-    files = reps_file_list(reps_dir)
     splits = cfg["splits"]
     methods = cfg.get("methods", METHODS_DEFAULT)
     gt = bool(cfg.get("gt_in_prompt", False))
 
     preds_by_method = {}
     for m in methods:
-        pf = Path(cfg["pred_root"]) / model / subset / f"predictions_method-{m}.jsonl"
-        if pf.exists():
-            preds_by_method[m] = load_predictions(pf)
+        md = method_dir(cfg, model, subset, m)
+        if md.is_dir():
+            preds = load_predictions(md)
+            if preds:
+                preds_by_method[m] = preds
     if not preds_by_method:
         print(f"  [{model}/{subset}] no predictions for any method — skip")
         return None
 
-    crr = {}
-    if cfg.get("crr_reduced_root"):
-        crr = load_crr_svd(Path(cfg["crr_reduced_root"]) / model / subset / "svd.tsv")
+    # Split-independent accuracy over the whole corpus (predictions cover every
+    # trajectory). Constant across seed rows by construction; repeating it per
+    # row lets it flow through the seed-mean into the summary unchanged.
+    all_ids = [Path(f).stem for f in files]
+    full_acc = {m: _acc(all_ids, p) for m, p in preds_by_method.items()}
 
     rows = []
-    for seed in canonical_seeds(cfg, subset):
+    for seed in canonical_seeds(cfg):
         val_ids, test_ids = val_test_ids(files, splits["train"], splits["val"], seed)
-        row = {"seed": seed, "n_val": len(val_ids), "n_test": len(test_ids), "gt_in_prompt": gt}
-        best_step = best_agent = None
+        row = {"seed": seed, "n_val": len(val_ids), "n_test": len(test_ids),
+               "n_full": len(all_ids), "gt_in_prompt": gt}
+        best = {k: None for k in ("step_test", "agent_test", "step_full", "agent_full")}
         for m in methods:
             if m not in preds_by_method:
-                for suf in ("step@1_val", "step@1_test", "agent@1_val", "agent@1_test"):
+                for suf in ("step@1_val", "step@1_test", "step@1_full",
+                            "agent@1_val", "agent@1_test", "agent@1_full"):
                     row[f"{m}_{suf}"] = None
                 continue
             p = preds_by_method[m]
             _nv, av, sv = _acc(val_ids, p)
             _nt, at, st = _acc(test_ids, p)
-            row[f"{m}_step@1_val"], row[f"{m}_step@1_test"] = sv, st
-            row[f"{m}_agent@1_val"], row[f"{m}_agent@1_test"] = av, at
-            best_step = st if best_step is None else max(best_step, st)
-            best_agent = at if best_agent is None else max(best_agent, at)
-        row["baseline_best_step@1_test"] = best_step
-        row["baseline_best_agent@1_test"] = best_agent
-        c = crr.get(int(seed), {})
-        for k in _CRR_COLS:
-            row[k] = c.get(k)
+            _nf, af, sf = full_acc[m]
+            row[f"{m}_step@1_val"], row[f"{m}_step@1_test"], row[f"{m}_step@1_full"] = sv, st, sf
+            row[f"{m}_agent@1_val"], row[f"{m}_agent@1_test"], row[f"{m}_agent@1_full"] = av, at, af
+            for key, v in (("step_test", st), ("agent_test", at),
+                           ("step_full", sf), ("agent_full", af)):
+                best[key] = v if best[key] is None else max(best[key], v)
+        row["baseline_best_step@1_test"] = best["step_test"]
+        row["baseline_best_agent@1_test"] = best["agent_test"]
+        row["baseline_best_step@1_full"] = best["step_full"]
+        row["baseline_best_agent@1_full"] = best["agent_full"]
         rows.append(row)
     return pd.DataFrame(rows)
 
