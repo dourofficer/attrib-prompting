@@ -1,0 +1,31 @@
+# Inference config — Who&When (ww), closed-source API models.
+# Requires the model's API key in the environment (default: OPENAI_API_KEY).
+models:  [gpt-4o]                 # gpt-5 spec below is ready — add it here to run
+subsets: [algorithm-generated, hand-crafted]
+methods: [all_at_once, step_by_step, binary_search]
+
+data_dir:     data/ww
+outputs_root: outputs/ww          # → outputs/ww/<subset>/<model>/<method>/<id>.json
+
+# step_by_step runs early_stop on API backends (the vendored control flow);
+# set step_mode: batch to judge every step instead (same predictions, ~2x calls).
+# step_mode: auto
+
+start_idx: 0
+end_idx:   null
+
+# A spec's `params` are sent to the API verbatim — nothing else is added, and
+# _run.json records exactly what was sent. Any OpenAI-compatible provider works
+# via base_url (OpenRouter, DeepSeek, a `vllm serve` endpoint, ...).
+model_specs:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    # api_key_env: OPENAI_API_KEY          # default
+    # base_url: https://api.openai.com/v1  # default; set for other providers
+    # concurrency: 8                       # max in-flight requests
+    params: {max_tokens: 1024, temperature: 0.6, top_p: 0.95, seed: 0}
+  gpt-5:
+    backend: openai
+    model: gpt-5
+    params: {max_completion_tokens: 4096}  # reasoning model: rejects temperature/top_p
