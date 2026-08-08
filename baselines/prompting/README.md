@@ -1,95 +1,84 @@
 # Prompting baselines
 
-This is the **prompting baseline** sub-repo for the failure-attribution project (see the
-top-level `CLAUDE.md`). Where the main method — Causal Residual Rescoring (CRR) — reads a
-proxy model's *internal representations*, this baseline instead **asks an LLM directly**, in
-natural language, which step of a failed trajectory was the decisive error. It is the
-"just prompt a strong model" comparison point against which CRR / SVD are measured, on the
-*identical* per-seed val/test splits.
-
-## What it does
-
-Given the same trajectories (Who&When / `ww`, CORRECT-Error, TraceElephant), it runs the three
-attribution prompting strategies from the original Who&When paper — reimplemented here to
-**batch over trajectories with VLLM** while keeping the prompts and control-flow verbatim:
+The three Who&When attribution strategies — reimplemented to run **batched over
+trajectories** on local checkpoints (vLLM) or **per-trajectory with incremental
+writes** on OpenAI-compatible APIs, while keeping the vendored prompts and
+control flow verbatim (see the top-level [`README.md`](../../README.md) for the
+project overview):
 
 - **`all_at_once`** — show the whole conversation, ask for `Agent Name` + `Step Number` in one shot.
-- **`step_by_step`** — judge each step "does this contain the decisive error? Yes/No"; the
-  prediction is the earliest "Yes".
+- **`step_by_step`** — judge each step "does this contain the decisive error? Yes/No";
+  the prediction is the earliest "Yes".
 - **`binary_search`** — recursively ask which half of the segment holds the critical mistake.
 
-Predictions are split-agnostic at inference time; evaluation against the CRR test splits (step@1 /
-agent@1) is deferred to `report.py`.
+Predictions cover every trajectory; evaluation against the per-seed splits
+(step@1 / agent@1) is deferred entirely to `report.py`.
 
-## Layout (mirrors the repo's `src/` ↔ `experiments/` split, in miniature)
+## Layout
 
-- **Core logic (config-free, thin `main()` per stage):**
-  - `predict.py` — runner: one `(model, subset, method)` per invocation → `predictions_method-{method}.jsonl`.
-  - `engine.py` — `PromptEngine`, the single batched-VLLM `LLM.chat` wrapper; also `strip_think`.
-  - `methods.py` — the three methods + their verbatim Who&When prompts and parsers.
-  - `report.py` — completion check + per-seed comparison tables placing the three methods next to SVD/CRR.
-  - `reparse.py` — re-derive `all_at_once` predictions from stored `raw` text, no GPU (recovers
-    e.g. DeepSeek's markdown-bolded labels).
+- **Core logic:**
+  - `methods.py` — the verbatim Who&When prompts/parsers, plus the three methods
+    as **per-trajectory generator programs** (yield one round's prompts, receive
+    responses, return prediction + full call log). Also `strip_think`.
+  - `runner.py` — the two drivers (`run_batched` lockstep for vLLM,
+    `run_streaming` thread-pool for APIs) and `OutputWriter` (atomic
+    per-trajectory files; file existence = resume ledger).
+  - `backends/` — `vllm` / `openai` / `dummy` behind one
+    `generate(message_lists) -> list[str]` protocol; adding a provider that
+    speaks the OpenAI protocol is a config entry, not code.
+  - `predict.py` — runner: one `(model, subset, method)` per invocation →
+    `{output}/{method}/<id>.json` per trajectory + `_run.json` snapshot.
+  - `report.py` — completion check + per-seed val/test/full tables.
+  - `reparse.py` — re-derive `all_at_once` predictions from stored `raw`, no GPU
+    (recovers e.g. DeepSeek's markdown-bolded labels).
 - **Orchestration (chooses arguments, runs nothing itself):**
-  - `sweep.py` — grid over models × subsets × methods; shells out one child per combo to `predict`.
-  - `configs/<ds>.yaml` — one inference config per dataset; `configs/report_<ds>.yaml` — one report config.
-  - `scripts/run_deepseek.sh`, `scripts/run_qwen.sh` — per-model wrappers over the sweep, one GPU each.
-- `tokenizers/deepseek-8b/` — corrected tokenizer dir for DeepSeek-R1-Distill (its shipped
-  `tokenizer_config` builds the wrong SentencePiece tokenizer; this fixes only `tokenizer_class`).
+  - `sweep.py` — grid over models × subsets × methods; shells out one child per
+    combo to `predict`. Models are declared in the config's `model_specs`
+    (backend + paths/params; vLLM specs may override sampling knobs per model).
+  - `configs/<ds>.yaml` — inference config per dataset; `configs/report_<ds>.yaml`
+    — report config (explicit `seeds`, split ratios, roots).
+  - `scripts/run_qwen.sh`, `scripts/run_deepseek.sh` — per-model wrappers over
+    the sweep, one GPU each (`GPU`/`DATASETS`/`DRY_RUN`/`EXTRA_SET` env knobs).
+- `tokenizers/deepseek-8b/` — corrected tokenizer dir for DeepSeek-R1-Distill
+  (its shipped `tokenizer_config` builds the wrong SentencePiece tokenizer;
+  this fixes only `tokenizer_class`).
 
-Outputs land under `outputs-<ds>/prompting/<model>/<subset>/` (predictions) and
-`outputs-<ds>/prompting-reports/` (tables).
+Outputs land under `outputs/<ds>/<subset>/<model>/<method>/` (one JSON per
+trajectory) and `outputs/<ds>/reports/` (tables).
 
-## Conventions that bite (baseline-specific)
+## Faithfulness notes (the details that bite)
 
-- **`role` is the agent identity for every dataset here.** This repo stores the agent name in
-  `history[t]["role"]` and `mistake_agent` matches it — unlike the original Who&When `name`/`role`
-  handcrafted switch.
-- **Reasoning backbones need token headroom.** DeepSeek-R1-Distill always emits a `<think>` block
-  and `gen_max_tokens` caps *thinking + answer combined*; 1024 gets eaten by reasoning before an
-  answer appears. `run_deepseek.sh` defaults `gen_max_tokens` to 8192 for this reason.
-- **`strip_think` runs before every parse**, regardless of the `enable_thinking` toggle, so
-  reasoning traces never reach the Who&When regexes.
-- **Report splits are reproduced byte-identically** to `src/svd/reproduce.py` (same `split_data`
-  calls, same `split_model` id-source), so the baseline sits on exactly the CRR val/test seeds.
+- **Prompts, regexes and decision rules are verbatim** from
+  `vendored/Agents_Failure_Attribution/Automated_FA/Lib/local_model.py` /
+  `evaluate.py` — including the intentionally unformatted literal `{idx}` in the
+  step_by_step prompt. `tests/test_vendored_parity.py` drives the vendored code
+  itself and asserts byte-identical prompts and identical decisions; don't
+  "fix" either side.
+- **The agent-identity field is `history[t]["role"]` for every dataset** (this
+  repo's data stores the agent name in `role`; the vendored `name`/`role`
+  switch targeted the original Who&When layout).
+- **`strip_think`** removes `<think>` blocks (and dangling closers) before any
+  parsing, so reasoning backbones work with the vendored regexes; markdown
+  decoration is stripped before the `Agent Name`/`Step Number` regexes.
+- **step_by_step early-stop vs batch**: vLLM judges all steps in one giant
+  batch; APIs stop at the first "Yes" (the vendored control flow). Predictions
+  are identical by construction — only the number of issued calls (and hence
+  logged `calls`) differs.
+- **binary_search ambiguity** defaults to the upper half, and the lower-half
+  recursion clamps with `min(mid+1, end)` — both vendored behaviors.
+- **DeepSeek-R1-Distill needs token headroom**: it always thinks, and
+  `gen_max_tokens` caps thinking + answer combined; its model spec sets 8192.
+- **Step indexing is 0-based** end-to-end; `report.py` compares
+  `int(predicted_step) == int(gold_step)` (gold steps are *strings* in ww) with
+  no ±1 shifting anywhere.
 
 ## Running
 
-Everything runs **from the repo root** as `python -m baselines.prompting.<stage>` (the package is
-importable as `baselines.…`). The sweep shares the repo's interface —
-`--config <yaml> [--set key=value ...] [--dry-run]`; `--set` does dot-path overrides.
-
-The two wrapper scripts are the front door. Each drives **one model across all datasets on one
-GPU**; pair them on different GPUs to parallelise. They are controlled by **env knobs**, matching
-`scripts/_common.sh`: `GPU`, `DATASETS`, `DRY_RUN`, `EXTRA_SET` (and `GEN_MAX_TOKENS` for deepseek).
-
 ```bash
-# One model, one GPU, all datasets (ww → traceelephant → correct-error):
-GPU=5 bash baselines/prompting/scripts/run_deepseek.sh
-GPU=4 bash baselines/prompting/scripts/run_qwen.sh          # run on another GPU in parallel
+# The grid (idempotent per trajectory; rerun = resume):
+CUDA_VISIBLE_DEVICES=0 python -m baselines.prompting.sweep \
+    --config baselines/prompting/configs/ww.yaml [--dry-run] [--set overwrite=true]
 
-# Narrow the dataset set, preview commands, or forward extra --set overrides:
-GPU=5 DATASETS="traceelephant correct-error" bash baselines/prompting/scripts/run_deepseek.sh
-GPU=5 DRY_RUN=1 bash baselines/prompting/scripts/run_qwen.sh
-GPU=5 EXTRA_SET="--set overwrite=true" bash baselines/prompting/scripts/run_deepseek.sh
-```
-
-The old positional GPU form still works (`... run_deepseek.sh 5`); the `GPU=` env var wins when both are given.
-
-Call the sweep directly for finer control (e.g. one dataset, both models):
-
-```bash
-CUDA_VISIBLE_DEVICES=5 uv run python -m baselines.prompting.sweep \
-    --config baselines/prompting/configs/ww.yaml --dry-run
-```
-
-Predictions are **idempotent** — an existing `predictions_method-{method}.jsonl` is skipped unless
-you pass `--set overwrite=true` (or `--overwrite` to `predict`).
-
-Then build the comparison tables (CPU only; no GPU), and optionally re-parse `all_at_once`:
-
-```bash
+# Reports (CPU only):
 python -m baselines.prompting.report --config baselines/prompting/configs/report_ww.yaml
-python -m baselines.prompting.report --config baselines/prompting/configs/report_ww.yaml --check-only
-python -m baselines.prompting.reparse --dry-run     # re-derive all_at_once from stored raw text
 ```
