@@ -1,29 +1,46 @@
-"""The three Who&When attribution methods — batched over trajectories via VLLM.
+"""The three Who&When attribution methods, as per-trajectory programs.
 
-Prompts and control-flow are copied **verbatim** from the vendored local baseline
-``baselines/Agents_Failure_Attribution/Automated_FA/Lib/local_model.py`` (the
-open-model path). The only deliberate deviations (see the plan) are:
+Prompts and control-flow are copied **verbatim** from the vendored baseline
+``vendored/Agents_Failure_Attribution/Automated_FA/Lib/local_model.py`` (the
+open-model path). The only deliberate deviations:
 
   * the agent-identity field is ``history[t]["role"]`` for every dataset (this
     repo's data stores the agent name in ``role`` and ``mistake_agent`` matches
     it; the vendored ``name``/``role`` ``is_handcrafted`` switch targeted the
     *original* Who&When layout), and
-  * outputs are passed through :func:`~baselines.prompting.engine.strip_think`
-    before parsing, so reasoning backbones are handled, and
-  * ``step_by_step`` evaluates every step in one batch instead of stopping at the
-    first "Yes" — the per-step judgment depends only on the deterministic
-    accumulated history, so the *prediction* (earliest "Yes") is identical.
+  * outputs are passed through :func:`strip_think` before parsing, so reasoning
+    backbones are handled, and
+  * ``step_by_step`` has two execution modes (see below); the vendored code
+    early-stops at the first "Yes", and both modes produce that exact
+    prediction because the per-step judgment depends only on the deterministic
+    accumulated history.
 
-Each method takes ``records`` (list of dicts with keys ``history``, ``question``,
-``ground_truth``) and a :class:`PromptEngine`, and returns a list of prediction
-dicts aligned to ``records``: ``{"predicted_agent", "predicted_step", "raw"}``
-(step is an ``int`` or ``None``; agent is a ``str`` or ``None``).
+Each method is a **generator program** over a single trajectory: it yields one
+round's prompts (a list of chat message lists), receives that round's decoded
+responses (``list[str]``, same order), and finally *returns* the prediction
+
+    {"predicted_agent": str|None, "predicted_step": int|None,
+     "raw": str|None, "calls": list[dict]}
+
+``raw`` keeps the legacy semantics (all_at_once: the one response;
+step_by_step: the firing step's response or None; binary_search: the last
+round's response); ``calls`` is the full response log in issue order with
+method-specific metadata. A driver in :mod:`.runner` decides how programs
+execute: lockstep giant batches for vLLM, independent per-trajectory
+completion (with incremental writes/resume) for API backends.
+
+step_by_step modes
+------------------
+``"batch"`` (vLLM default) yields every step's prompt as one round and scans
+for the earliest response starting with "1. yes". ``"early_stop"`` (API
+default, and the vendored control flow) yields one step per round and returns
+at the first "Yes", saving roughly half the paid calls. Prompts are
+byte-identical between modes; only the number of issued calls differs.
 """
 from __future__ import annotations
 
 import re
-
-from .engine import PromptEngine, strip_think
+from typing import Generator
 
 # The agent identity lives in the "role" field for every dataset in this repo.
 AGENT_KEY = "role"
@@ -40,6 +57,22 @@ STEP_RE = re.compile(r"Step Number:\s*(\d+)", re.IGNORECASE)
 # Stripping `* ` ` `# ` is a no-op on the GPT/Qwen-style outputs the vendored code
 # targeted, so the regexes stay faithful and just become markdown-tolerant.
 _MARKDOWN_RE = re.compile(r"[*`#]")
+
+# ``<think> ... </think>`` (DOTALL). Also handles a dangling ``</think>`` with no
+# opening tag (some templates inject the opener into the prompt, so the model only
+# emits the closer).
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+_DANGLING_CLOSE = re.compile(r"^.*?</think>", re.DOTALL)
+
+
+def strip_think(text: str) -> str:
+    """Remove reasoning traces so the baseline parsers see only the answer."""
+    if text is None:
+        return ""
+    out = _THINK_BLOCK.sub("", text)
+    if "</think>" in out:
+        out = _DANGLING_CLOSE.sub("", out)
+    return out.strip()
 
 
 def _strip_markdown(text: str) -> str:
@@ -131,124 +164,120 @@ def build_binary_search_prompt(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Methods
+# Method programs
 # ─────────────────────────────────────────────────────────────────────────────
 
-def all_at_once(records: list[dict], engine: PromptEngine) -> list[dict]:
-    prompts = [
-        _messages(build_all_at_once_prompt(r["history"], r["question"], r["ground_truth"]))
-        for r in records
-    ]
-    outputs = engine.generate(prompts)
-
-    preds = []
-    for raw in outputs:
-        agent, step = parse_all_at_once(raw)
-        preds.append({
-            "predicted_agent": agent,
-            "predicted_step": step,
-            "raw": raw,
-        })
-    return preds
+Program = Generator[list[list[dict]], list[str], dict]
 
 
-def step_by_step(records: list[dict], engine: PromptEngine) -> list[dict]:
-    # Flatten all (record, step) pairs into one batch. The judgment at step idx
-    # depends only on the deterministic accumulated history, so batching is exact.
+def _empty_pred() -> dict:
+    return {"predicted_agent": None, "predicted_step": None, "raw": None, "calls": []}
+
+
+def all_at_once_program(record: dict, *, step_mode: str = "batch") -> Program:
+    prompt = _messages(
+        build_all_at_once_prompt(record["history"], record["question"], record["ground_truth"])
+    )
+    raw = (yield [prompt])[0]
+    agent, step = parse_all_at_once(raw)
+    return {
+        "predicted_agent": agent,
+        "predicted_step": step,
+        "raw": raw,
+        "calls": [{"response": raw}],
+    }
+
+
+def _fires(raw: str) -> bool:
+    """The vendored step_by_step decision: response starts with '1. yes'."""
+    return strip_think(raw).lower().strip().startswith("1. yes")
+
+
+def step_by_step_program(record: dict, *, step_mode: str = "batch") -> Program:
+    # Prompt construction is shared by both modes: the judgment at step idx
+    # depends only on the deterministic accumulated history, so the prompt
+    # bytes are identical whether or not later steps are ever issued.
     prompts: list[list[dict]] = []
-    owners: list[tuple[int, int, str]] = []  # (record_idx, step_idx, agent_name)
+    metas: list[tuple[int, str]] = []  # (step_idx, agent_name)
+    acc = ""
+    for idx, entry in enumerate(record["history"]):
+        agent_name = _agent_of(entry)
+        content = entry.get("content", "")
+        acc += f"Step {idx} - {agent_name}: {content}\n"
+        prompts.append(_messages(
+            build_step_by_step_prompt(record["question"], record["ground_truth"], acc, idx, agent_name)
+        ))
+        metas.append((idx, agent_name))
 
-    for ri, r in enumerate(records):
-        history = r["history"]
-        acc = ""
-        for idx, entry in enumerate(history):
-            agent_name = _agent_of(entry)
-            content = entry.get("content", "")
-            acc += f"Step {idx} - {agent_name}: {content}\n"
-            prompts.append(_messages(
-                build_step_by_step_prompt(r["question"], r["ground_truth"], acc, idx, agent_name)
-            ))
-            owners.append((ri, idx, agent_name))
-
-    outputs = engine.generate(prompts)
-
-    # Per record, pick the earliest step whose answer starts with "1. yes".
-    preds: list[dict] = [
-        {"predicted_agent": None, "predicted_step": None, "raw": None}
-        for _ in records
-    ]
-    for (ri, idx, agent_name), raw in zip(owners, outputs):
-        if preds[ri]["predicted_step"] is not None:
-            continue  # already found an earlier decisive step for this record
-        answer = strip_think(raw)
-        if answer.lower().strip().startswith("1. yes"):
-            preds[ri] = {
-                "predicted_agent": agent_name,
-                "predicted_step": idx,
-                "raw": raw,
-            }
-    return preds
+    pred = _empty_pred()
+    if step_mode == "batch":
+        # One round with every step's prompt; earliest "1. yes" wins.
+        outputs = yield prompts
+        pred["calls"] = [
+            {"step": idx, "agent": agent, "response": raw}
+            for (idx, agent), raw in zip(metas, outputs)
+        ]
+        for (idx, agent_name), raw in zip(metas, outputs):
+            if _fires(raw):
+                pred.update(predicted_agent=agent_name, predicted_step=idx, raw=raw)
+                break
+    elif step_mode == "early_stop":
+        # One step per round, stop at the first "Yes" — the vendored control flow.
+        for (idx, agent_name), prompt in zip(metas, prompts):
+            raw = (yield [prompt])[0]
+            pred["calls"].append({"step": idx, "agent": agent_name, "response": raw})
+            if _fires(raw):
+                pred.update(predicted_agent=agent_name, predicted_step=idx, raw=raw)
+                break
+    else:
+        raise ValueError(f"unknown step_mode {step_mode!r} (expected batch | early_stop)")
+    return pred
 
 
-def binary_search(records: list[dict], engine: PromptEngine) -> list[dict]:
-    # Round-by-round, batched across trajectories at the same recursion depth.
-    # State per record: [start, end]; active while start < end.
-    states = [[0, len(r["history"]) - 1] for r in records]
-    # Records with empty history are already filtered upstream; guard anyway.
-    preds: list[dict] = [{"predicted_agent": None, "predicted_step": None, "raw": None}
-                         for _ in records]
+def binary_search_program(record: dict, *, step_mode: str = "batch") -> Program:
+    history = record["history"]
+    pred = _empty_pred()
+    start, end = 0, len(history) - 1  # empty history → start > end → no rounds
 
-    while True:
-        active = [i for i, (s, e) in enumerate(states) if s < e]
-        if not active:
-            break
+    round_no = 0
+    while start < end:
+        mid = start + (end - start) // 2
+        segment = history[start:end + 1]
+        chat_content = "\n".join(
+            f"{_agent_of(entry)}: {entry.get('content', '')}" for entry in segment
+        )
+        prompt = build_binary_search_prompt(
+            record["question"],
+            record["ground_truth"],
+            chat_content,
+            range_description=f"from step {start} to step {end}",
+            upper_half_desc=f"from step {start} to step {mid}",
+            lower_half_desc=f"from step {mid + 1} to step {end}",
+        )
+        raw = (yield [_messages(prompt)])[0]
+        pred["calls"].append(
+            {"round": round_no, "start": start, "end": end, "mid": mid, "response": raw}
+        )
+        pred["raw"] = raw  # keep the last segment's response
+        result_lower = strip_think(raw).lower().strip()
+        if "upper half" in result_lower:
+            start, end = start, mid
+        elif "lower half" in result_lower:
+            start, end = min(mid + 1, end), end
+        else:
+            # Ambiguous → default to upper half (matches local variant).
+            start, end = start, mid
+        round_no += 1
 
-        prompts: list[list[dict]] = []
-        meta: list[tuple[int, int]] = []  # (record_idx, mid)
-        for i in active:
-            start, end = states[i]
-            history = records[i]["history"]
-            mid = start + (end - start) // 2
-            segment = history[start:end + 1]
-            chat_content = "\n".join(
-                f"{_agent_of(entry)}: {entry.get('content', '')}" for entry in segment
-            )
-            prompt = build_binary_search_prompt(
-                records[i]["question"],
-                records[i]["ground_truth"],
-                chat_content,
-                range_description=f"from step {start} to step {end}",
-                upper_half_desc=f"from step {start} to step {mid}",
-                lower_half_desc=f"from step {mid + 1} to step {end}",
-            )
-            prompts.append(_messages(prompt))
-            meta.append((i, mid))
-
-        outputs = engine.generate(prompts)
-
-        for (i, mid), raw in zip(meta, outputs):
-            start, end = states[i]
-            result_lower = strip_think(raw).lower().strip()
-            if "upper half" in result_lower:
-                states[i] = [start, mid]
-            elif "lower half" in result_lower:
-                states[i] = [min(mid + 1, end), end]
-            else:
-                # Ambiguous → default to upper half (matches local variant).
-                states[i] = [start, mid]
-            preds[i]["raw"] = raw  # keep the last segment's response
-
-    for i, (start, end) in enumerate(states):
-        history = records[i]["history"]
-        step = start if history else 0
-        if history:
-            preds[i]["predicted_agent"] = _agent_of(history[step])
-            preds[i]["predicted_step"] = step
-    return preds
+    if history:
+        step = start
+        pred["predicted_agent"] = _agent_of(history[step])
+        pred["predicted_step"] = step
+    return pred
 
 
 METHODS = {
-    "all_at_once": all_at_once,
-    "step_by_step": step_by_step,
-    "binary_search": binary_search,
+    "all_at_once": all_at_once_program,
+    "step_by_step": step_by_step_program,
+    "binary_search": binary_search_program,
 }
