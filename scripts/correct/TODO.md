@@ -8,15 +8,36 @@ Volume: 2,586 trajectories in scope (ww 184, traceelephant 176, correct-error
 (2 models × 2 GT settings). Run `ww` and `traceelephant` first; `correct-error`
 is 86% of the cost.
 
-- [ ] **1. Setup**
+## Which machine runs what
+
+| stage | needs | GPU? | API key? |
+|---|---|---|---|
+| 1. schemagen | `data/` | no — API models only | yes |
+| 2. similarity | `data/` + the BGE-M3 checkpoint | yes (CPU works, slower) | no |
+| 3. predict | `data/` + **both** stage-1/2 artifacts | no | yes |
+| report | `data/` + predictions | no | no |
+
+`torch` is imported only by `similarity.py`, and lazily — stages 1 and 3 never
+load it. Stages 1 and 2 read nothing but `data/`, so they are independent and
+can run **at the same time** on the two machines; only stage 3 needs both.
+Splitting the run that way is fully supported — see step 3.
+
+- [ ] **1. Setup** — on the API machine:
 
   ```bash
   pip install -e ".[api]"
-  pip install torch transformers      # stage 2 only (BGE-M3 encoder)
   export OPENAI_API_KEY=sk-...
   ```
 
-- [ ] **2. Smoke test** — 10 trajectories, preview then run, both settings:
+  On the GPU machine (this one), only stage 2's dependencies:
+
+  ```bash
+  pip install -e . && pip install torch transformers
+  ```
+
+- [ ] **2. Smoke test** — 10 trajectories, preview then run, both settings.
+  These run all three stages, so on a split setup either do this on the GPU
+  machine's clone for the similarity part, or simply run it after step 3:
 
   ```bash
   DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/correct/run.sh
@@ -38,7 +59,9 @@ is 86% of the cost.
   step 3.
 
 - [ ] **3. Offline stages, once per dataset** (GT-independent; both settings
-  and both detectors share these artifacts):
+  and both detectors share these artifacts).
+
+  Single machine — both stages in order:
 
   ```bash
   for ds in ww traceelephant correct-error; do
@@ -46,9 +69,36 @@ is 86% of the cost.
   done
   ```
 
+  Two machines — run these two blocks **in parallel**, they don't depend on
+  each other:
+
+  ```bash
+  # (3a) API machine — no GPU needed
+  for ds in ww traceelephant correct-error; do
+    DATASET=$ds STAGES=schemagen bash scripts/correct/run.sh
+  done
+  # writes outputs/<ds>/<subset>/gpt-4o/schemagen/<id>.json
+
+  # (3b) GPU machine — no API key needed
+  for ds in ww traceelephant correct-error; do
+    DATASET=$ds STAGES=similarity GPU=0 bash scripts/correct/run.sh
+  done
+  # writes outputs/<ds>/<subset>/_similarities/bge-m3.json (+ .meta.json)
+  ```
+
+  Then move the similarity artifacts to the API machine — a few MB for
+  correct-error, kilobytes elsewhere. Via git if both clones share a remote,
+  otherwise directly:
+
+  ```bash
+  # on the GPU machine
+  git add 'outputs/*/*/_similarities/*' && git commit -m "CORRECT: BGE-M3 similarities" && git push
+  # or: rsync -a --include='*/' --include='_similarities/**' --exclude='*' outputs/ user@api-host:/path/to/attrib-prompting/outputs/
+  ```
+
   Schemata come from `schema_model: gpt-4o` in every config — one generator,
   both detectors, as the paper intends. (To use GPT-5 schemata instead, set
-  `schema_model: gpt-5` and rerun this step; results then land in a separate
+  `schema_model: gpt-5` and rerun 3a; results then land in a separate
   `<subset>/gpt-5/schemagen/` tree.)
 
 - [ ] **4. Detection — the full grid.** `MODEL` omitted ⇒ every model in the
@@ -63,7 +113,10 @@ is 86% of the cost.
   ```
 
   `without` is the paper setting and writes to `outputs-nogt/`; `with` adds the
-  answer line and writes to `outputs/`.
+  answer line and writes to `outputs/`. On the API machine, both stage-1 and
+  stage-2 artifacts must be present — if either is missing, `predict` exits
+  with the exact command that produces it rather than running a degraded
+  prompt.
 
 - [ ] **5. Check completion, then evaluate** — both settings, per dataset:
 
