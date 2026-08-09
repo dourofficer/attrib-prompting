@@ -152,7 +152,7 @@ def test_correct_prompt_parity(vendored, data_dir, k):
     ours = []
     for record in load_records(str(data_dir)):
         keys, contents = analyzer.get_similarity_based_schema(int(record["id"]), k)
-        ours.append(correct_messages(record, keys, contents, with_gt=False))
+        ours.append(correct_messages(record, keys, contents, include_gt=False))
     assert _by_user_content([c["messages"] for c in client.captured]) == _by_user_content(ours)
 
 
@@ -163,7 +163,7 @@ def test_baseline_prompt_parity(vendored, data_dir):
         max_tokens=1024, model_type="gpt", batch_size=10, max_workers=1,
     )
     assert len(client.captured) == 3
-    ours = [baseline_messages(r, with_gt=False) for r in load_records(str(data_dir))]
+    ours = [baseline_messages(r, include_gt=False) for r in load_records(str(data_dir))]
     assert _by_user_content([c["messages"] for c in client.captured]) == _by_user_content(ours)
 
 
@@ -224,6 +224,53 @@ def test_parse_reuses_prompting(vendored):
     evaluate_src = (REPO_ROOT / "vendored/CORRECT/src/evaluate.py").read_text(encoding="utf-8")
     assert r"Agent Name:\s*([\w_]+)" in evaluate_src
     assert r"Step Number:\s*(\d+)" in evaluate_src
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Retrieval parity (inference_whoandwhen.py::SimilarityBasedSchemaAnalyzer)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def vendored_whoandwhen():
+    _stub("tqdm", tqdm=lambda it, **kw: it)
+    _stub("dotenv", load_dotenv=lambda *a, **kw: None)
+    _stub("torch")
+    _stub("transformers", pipeline=None, AutoTokenizer=None,
+          AutoModelForCausalLM=None, Pipeline=type("Pipeline", (), {}))
+    _stub("openai", OpenAI=object, AzureOpenAI=object)
+    _stub("vllm", LLM=None, SamplingParams=None)
+    src_dir = str(REPO_ROOT / "vendored/CORRECT/src")
+    sys.path.insert(0, src_dir)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "vendored_inference_whoandwhen",
+            REPO_ROOT / "vendored/CORRECT/src/inference_whoandwhen.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path.remove(src_dir)
+    return mod
+
+
+def test_retrieval_parity(vendored_whoandwhen):
+    from baselines.correct.retrieval import SchemaAnalyzer
+
+    schemata = {1: "S1", 2: "S2", 4: "S4"}  # 3 has no schema
+    similarities = {1: [3, 2, 4], 2: [1, 4, 3], 5: []}
+    theirs = vendored_whoandwhen.SimilarityBasedSchemaAnalyzer(schemata, similarities)
+    ours = SchemaAnalyzer(schemata, similarities)
+
+    cases = [
+        (1, 1),   # top-1 neighbour lacks a schema → silently empty
+        (1, 2),   # slice [3, 2] → only 2 has a schema
+        (2, 2),   # full cache in slice
+        (2, 10),  # k > list length
+        (5, 3),   # empty neighbour list
+        (9, 1),   # unknown file_num
+    ]
+    for file_num, k in cases:
+        assert ours.get_similarity_based_schema(file_num, k) == \
+            theirs.get_similarity_based_schema(file_num, k), (file_num, k)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

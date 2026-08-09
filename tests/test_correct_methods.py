@@ -48,7 +48,7 @@ def test_correct_program_doc_shape():
     gen = correct_program(RECORD, analyzer=OneSchemaAnalyzer(), num_schemata=1)
     issued, doc = _drive(gen, ["Agent Name: WebSurfer\nStep Number: 1\nReason for Mistake: x"])
     assert len(issued) == 1
-    assert issued[0] == correct_messages(RECORD, [3], ["A schema about WebSurfer errors."], with_gt=False)
+    assert issued[0] == correct_messages(RECORD, [3], ["A schema about WebSurfer errors."], include_gt=False)
     assert doc["predicted_agent"] == "WebSurfer" and doc["predicted_step"] == 1
     assert doc["schema_cases"] == [3] and doc["num_schemata"] == 1
     assert doc["calls"] == [{"response": "Agent Name: WebSurfer\nStep Number: 1\nReason for Mistake: x"}]
@@ -57,7 +57,7 @@ def test_correct_program_doc_shape():
 
 def test_baseline_program_doc_shape():
     issued, doc = _drive(correct_baseline_program(RECORD), ["Agent Name: Orchestrator\nStep Number: 0"])
-    assert issued == [baseline_messages(RECORD, with_gt=False)]
+    assert issued == [baseline_messages(RECORD, include_gt=False)]
     assert doc["predicted_agent"] == "Orchestrator" and doc["predicted_step"] == 0
     assert doc["schema_cases"] == [] and doc["num_schemata"] == 0
 
@@ -68,19 +68,19 @@ def test_unparseable_response_gives_none():
     assert doc["raw"] == "I have no idea."
 
 
-@pytest.mark.parametrize("with_gt", [False, True])
-def test_gt_flag_controls_answer_line(with_gt):
-    for messages in (correct_messages(RECORD, [], [], with_gt=with_gt),
-                     baseline_messages(RECORD, with_gt=with_gt)):
+@pytest.mark.parametrize("include_gt", [False, True])
+def test_gt_flag_controls_answer_line(include_gt):
+    """GUIDE GT axis: include_gt inserts the answer line; the without-GT bytes
+    are the vendored (paper) default for this baseline."""
+    for messages in (correct_messages(RECORD, [], [], include_gt=include_gt),
+                     baseline_messages(RECORD, include_gt=include_gt)):
         user = messages[1]["content"]
-        assert ("The Answer for the problem is: 42" in user) == with_gt
+        assert ("The Answer for the problem is: 42" in user) == include_gt
 
 
 def test_methods_registry():
-    assert set(METHODS) == {"correct", "correct_gt", "correct_baseline", "correct_baseline_gt"}
-    for name, (program, with_gt, needs_artifacts) in METHODS.items():
-        assert with_gt == name.endswith("_gt")
-        assert needs_artifacts == (not name.startswith("correct_baseline"))
+    assert set(METHODS) == {"correct", "correct_baseline"}
+    for program in METHODS.values():
         assert callable(program)
 
 

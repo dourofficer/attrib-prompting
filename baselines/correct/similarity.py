@@ -1,21 +1,29 @@
-"""Trajectory-similarity precomputation — one subset per invocation.
+"""CORRECT stage 2 — trajectory-similarity precomputation, one subset per run.
 
-Port of ``baselines/CORRECT/src/generate_trajectory_similarities.py``, verbatim
+Port of ``vendored/CORRECT/src/generate_trajectory_similarities.py``, verbatim
 in behaviour: each trajectory is rendered as ``"Question: {q}"`` plus one
 ``"{agent}: {content}"`` line per turn, embedded with BAAI/bge-m3 (HF
 ``AutoModel``, batches of 8, tokenizer truncation at 8192), mean-pooled over the
 attention mask, L2-normalized; pairwise cosine similarities give, per
 trajectory, the ranked list of all *other* trajectory file-numbers by descending
-similarity (self excluded — this is the leave-one-out mask retrieval relies on).
+similarity (self excluded — the leave-one-out mask retrieval relies on). Files
+are visited in the vendored ``sorted(os.listdir())`` order, so exact-tie
+ordering matches too (Python's sort is stable).
+
+The output JSON is the vendored format — ``{"<id>": [id, id, ...]}``, no scores
+— plus a ``*.meta.json`` sidecar recording how it was computed. The artifact is
+model-independent (one per subset) and committed to git so API-only users can
+run detection without torch.
 
 The embedder is a similarity encoder, not a generator, so it stays on HF
-transformers exactly as vendored (vLLM is for generation).
+transformers exactly as vendored (vLLM is for generation). All torch imports
+are lazy: the skip-if-exists path and ``--help`` work without it.
 
 Usage
 -----
 python -m baselines.correct.similarity \
     --input  data/ww/hand-crafted \
-    --output outputs-ww/correct/similarities/hand-crafted_trajectory_similarities.json \
+    --output outputs/ww/hand-crafted/_similarities/bge-m3.json \
     --model  ../hub/BAAI/bge-m3
 """
 from __future__ import annotations
@@ -23,9 +31,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
-
-import numpy as np
 
 
 def read_trajectory_json(file_path) -> str:
@@ -61,8 +68,9 @@ def mean_pooling(model_output, attention_mask):
 
 
 def embed_texts(texts: list[str], model_name: str, batch_size: int = 8,
-                max_length: int = 8192) -> np.ndarray:
+                max_length: int = 8192):
     """Embed texts with the vendored encode → mean-pool → L2-normalize recipe."""
+    import numpy as np
     import torch
     from transformers import AutoModel, AutoTokenizer
 
@@ -91,7 +99,7 @@ def embed_texts(texts: list[str], model_name: str, batch_size: int = 8,
     return np.array(embeddings)
 
 
-def rank_neighbours(embeddings: np.ndarray, file_indices: list[int]) -> dict[int, list[int]]:
+def rank_neighbours(embeddings, file_indices: list[int]) -> dict[int, list[int]]:
     """Vendored ranking: cosine similarity, self excluded, descending order."""
     from sklearn.metrics.pairwise import cosine_similarity
 
@@ -111,12 +119,18 @@ def rank_neighbours(embeddings: np.ndarray, file_indices: list[int]) -> dict[int
 
 
 def compute_trajectory_similarities(dataset_path: str, model_name: str,
-                                    batch_size: int = 8,
-                                    max_length: int = 8192) -> dict[int, list[int]]:
-    """Compute the ranked-neighbour map for every trajectory in a subset dir."""
+                                    batch_size: int = 8, max_length: int = 8192,
+                                    embed_fn=embed_texts) -> dict[int, list[int]]:
+    """Ranked-neighbour map for every trajectory in a subset dir.
+
+    ``embed_fn`` is injectable purely for keyless tests; the default is the
+    vendored recipe.
+    """
     trajectory_texts: list[str] = []
     file_indices: list[int] = []
 
+    # Vendored iteration order: lexicographic listdir (ties in the ranking
+    # depend on it — do not "fix" to numeric order).
     for f in sorted(os.listdir(dataset_path)):
         if f.endswith(".json") and f != "file_mapping.json":
             try:
@@ -134,7 +148,7 @@ def compute_trajectory_similarities(dataset_path: str, model_name: str,
         return {}
 
     print("Computing embeddings...")
-    embeddings = embed_texts(trajectory_texts, model_name, batch_size, max_length)
+    embeddings = embed_fn(trajectory_texts, model_name, batch_size, max_length)
 
     print("Computing pairwise similarities...")
     return rank_neighbours(embeddings, file_indices)
@@ -143,7 +157,8 @@ def compute_trajectory_similarities(dataset_path: str, model_name: str,
 def main() -> None:
     p = argparse.ArgumentParser(description="Generate CORRECT trajectory-similarity mappings.")
     p.add_argument("--input", required=True, help="Subset directory of trajectory JSONs.")
-    p.add_argument("--output", required=True, help="Output JSON file path.")
+    p.add_argument("--output", required=True,
+                   help="Output JSON path, e.g. outputs/<ds>/<subset>/_similarities/bge-m3.json.")
     p.add_argument("--model", default="BAAI/bge-m3",
                    help="Embedding model (HF name or local path).")
     p.add_argument("--batch_size", type=int, default=8)
@@ -164,7 +179,16 @@ def main() -> None:
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as f:
-        json.dump(similarities, f, indent=2)
+        json.dump(similarities, f, indent=2)  # int keys serialize as strings, as vendored
+    meta_path = out_path.with_name(out_path.stem + ".meta.json")
+    meta_path.write_text(json.dumps({
+        "input": args.input,
+        "embed_model": args.model,
+        "batch_size": args.batch_size,
+        "max_length": args.max_length,
+        "n_trajectories": len(similarities),
+        "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }, indent=2), encoding="utf-8")
     print(f"  wrote {out_path}  ({len(similarities)} trajectories)")
 
 

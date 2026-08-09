@@ -8,19 +8,25 @@ with closed-source detectors. Per user decision this variant is used for ALL
 datasets and backends (the vendored local-vLLM variant with its short schema
 injection is not adapted).
 
-Two methods, each in a no-GT (paper setting) and a with-GT flavour:
+Two methods:
 
-- ``correct`` / ``correct_gt`` — base prompt (``cloud_paper.py:364-375``) +
-  top-k retrieved neighbour schemata injected as "THOUGHT TEMPLATE(S) FOR
-  GUIDANCE" (``_correct_modify_prompt_paper``, ``:252-344``), then the
-  aggressive ASCII scrub ``clean_text`` on user AND system prompt (``:380``,
-  ``:388``).
-- ``correct_baseline`` / ``correct_baseline_gt`` — the k=0 baseline prompt
-  (``cloud_paper.py:173-192``), which differs from the base prompt in three
-  byte-level ways (no space before ``\\n`` after the problem, a triple-quoted
-  indented JSON example, tail ``"Reason for Mistake: \\n"``) and is NOT
-  ``clean_text``-scrubbed — only the smart-quote mapping
-  ``_clean_unicode_content`` that ``_make_api_call_cloud`` applies (``:87-90``).
+- ``correct`` — base prompt (``cloud_paper.py:364-375``) + top-k retrieved
+  neighbour schemata injected as "THOUGHT TEMPLATE(S) FOR GUIDANCE"
+  (``_correct_modify_prompt_paper``, ``:252-344``), then the aggressive ASCII
+  scrub ``clean_text`` on user AND system prompt (``:380``, ``:388``).
+- ``correct_baseline`` — the k=0 baseline prompt (``cloud_paper.py:173-192``),
+  which differs from the base prompt in three byte-level ways (no space before
+  ``\\n`` after the problem, a triple-quoted indented JSON example, tail
+  ``"Reason for Mistake: \\n"``) and is NOT ``clean_text``-scrubbed — only the
+  smart-quote mapping ``_clean_unicode_content`` that ``_make_api_call_cloud``
+  applies (``:87-90``).
+
+Both run in the repo's two GT settings (GUIDE.md "GT settings"): the programs
+take ``include_gt``, and ``include_gt=True`` inserts the vendored ground-truth
+line (``local_model.py:637-638``) after the problem line. **The vendored cloud
+path never includes the answer**, so for this baseline the parity-tested
+vendored bytes are the *without*-GT setting (``include_gt=False`` default —
+the inverse of prompting, where the vendored prompt carries the answer).
 
 Deliberate deviations (see README):
   * the agent-identity field is ``history[t]["role"]`` for every dataset (the
@@ -30,9 +36,6 @@ Deliberate deviations (see README):
     algorithm-generated turns ``user``/``assistant``);
   * scrubbing is applied at message-build time — our backends send messages
     verbatim, and ``_clean_unicode_content`` after ``clean_text`` is a no-op;
-  * the with-GT flavours insert the vendored ground-truth line
-    (``local_model.py:637-638``) after the problem line; the vendored cloud
-    path itself never includes the answer (paper setting);
   * parsing reuses prompting's ``parse_all_at_once`` (strip_think + markdown
     tolerance over the verbatim evaluate.py regexes — the vendored
     ``CORRECT/src/evaluate.py`` patterns are the identical family).
@@ -256,12 +259,12 @@ def modify_prompt_paper(prompt, schema_keys, schema_contents, wording='template'
 # ─────────────────────────────────────────────────────────────────────────────
 
 def correct_messages(record: dict, schema_keys: list[int], schema_contents: list[str],
-                     with_gt: bool = False) -> list[dict]:
+                     include_gt: bool = False) -> list[dict]:
     """Schema-guided messages: full ``clean_text`` scrub on user AND system
     prompt (``cloud_paper.py:380``, ``:388``)."""
     prompt = modify_prompt_paper(
         build_correct_base_prompt(record["history"], record["question"],
-                                  record["ground_truth"] if with_gt else None),
+                                  record["ground_truth"] if include_gt else None),
         schema_keys, schema_contents,
     )
     return [
@@ -270,11 +273,11 @@ def correct_messages(record: dict, schema_keys: list[int], schema_contents: list
     ]
 
 
-def baseline_messages(record: dict, with_gt: bool = False) -> list[dict]:
+def baseline_messages(record: dict, include_gt: bool = False) -> list[dict]:
     """k=0 baseline messages: only the ``_clean_unicode_content`` mapping the
     vendored ``_make_api_call_cloud`` applies (``cloud_paper.py:87-90``)."""
     prompt = build_baseline_prompt(record["history"], record["question"],
-                                   record["ground_truth"] if with_gt else None)
+                                   record["ground_truth"] if include_gt else None)
     return [
         {"role": "system", "content": _clean_unicode_content(SYSTEM_PROMPT)},
         {"role": "user", "content": _clean_unicode_content(prompt)},
@@ -301,22 +304,19 @@ def _finish(raw: str, schema_cases: list[int], num_schemata: int) -> dict:
 
 
 def correct_program(record: dict, *, analyzer, num_schemata: int,
-                    with_gt: bool = False) -> Program:
+                    include_gt: bool = False) -> Program:
     keys, contents = analyzer.get_similarity_based_schema(int(record["id"]), num_schemata)
-    raw = (yield [correct_messages(record, keys, contents, with_gt)])[0]
+    raw = (yield [correct_messages(record, keys, contents, include_gt)])[0]
     return _finish(raw, keys, num_schemata)
 
 
 def correct_baseline_program(record: dict, *, analyzer=None, num_schemata: int = 0,
-                             with_gt: bool = False) -> Program:
-    raw = (yield [baseline_messages(record, with_gt)])[0]
+                             include_gt: bool = False) -> Program:
+    raw = (yield [baseline_messages(record, include_gt)])[0]
     return _finish(raw, [], 0)
 
 
-# method name → (program, with_gt, needs schemata/similarity artifacts)
 METHODS = {
-    "correct":             (correct_program, False, True),
-    "correct_gt":          (correct_program, True, True),
-    "correct_baseline":    (correct_baseline_program, False, False),
-    "correct_baseline_gt": (correct_baseline_program, True, False),
+    "correct": correct_program,              # needs schemata + similarities
+    "correct_baseline": correct_baseline_program,
 }
