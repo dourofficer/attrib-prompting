@@ -220,6 +220,8 @@ def test_sweep_e2e_dummy(tmp_path):
         "--gt", "with",  # tmp roots can't be mapped by nogt_root
         "--set", f"data_dir={tmp_path}",
         "--set", "subsets=[data]",
+        # Explicit: the shipped config runs whichever methods the user needs.
+        "--set", "methods=[correct, correct_baseline]",
         "--set", f"outputs_root={outputs}",
         "--set", "models=[dummy]",
         "--set", "schema_model=dummy",
