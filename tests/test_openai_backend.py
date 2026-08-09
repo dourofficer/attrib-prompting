@@ -108,3 +108,20 @@ def test_concurrency_bounded():
 def test_missing_key_env_errors():
     with pytest.raises(RuntimeError, match="NOT_A_REAL_KEY_ENV"):
         OpenAIBackend("gpt-4o", api_key_env="NOT_A_REAL_KEY_ENV")
+
+
+def test_headers_are_forwarded_to_sdk(monkeypatch):
+    captured = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(__import__("sys").modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+    monkeypatch.setenv("TEST_API_KEY", "secret")
+    OpenAIBackend(
+        "gpt-5",
+        api_key_env="TEST_API_KEY",
+        headers={"X-Llmhub-Channel": "1"},
+    )
+    assert captured["default_headers"] == {"X-Llmhub-Channel": "1"}

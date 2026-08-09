@@ -53,6 +53,7 @@ class OpenAIBackend:
         *,
         base_url: str | None = None,
         api_key_env: str = "OPENAI_API_KEY",
+        headers: dict[str, str] | None = None,
         params: dict | None = None,
         concurrency: int = 8,
         max_retries: int = 6,
@@ -75,7 +76,11 @@ class OpenAIBackend:
 
             # The backend owns retry behaviour; disable the SDK's built-in retries.
             client = openai.OpenAI(
-                api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0
+                api_key=api_key,
+                base_url=base_url,
+                default_headers=dict(headers or {}),
+                timeout=timeout,
+                max_retries=0,
             )
         self.client = client
 
