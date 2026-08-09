@@ -207,4 +207,6 @@ def test_parse_all_at_once_variants():
     assert parse_all_at_once(think) == ("WebSurfer", 4)
     dangling = "...reasoning...</think>Agent Name: WebSurfer\nStep Number: 4"
     assert parse_all_at_once(dangling) == ("WebSurfer", 4)
+    parenthesized = "Agent Name: (Planner)\n, Step Number: (9)\n, Reason: bad plan"
+    assert parse_all_at_once(parenthesized) == ("Planner", 9)
     assert parse_all_at_once("no structured answer") == (None, None)

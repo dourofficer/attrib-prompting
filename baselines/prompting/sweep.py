@@ -118,6 +118,8 @@ def model_args(model: str, spec: dict, cfg: dict) -> list[str]:
             argv += ["--api-base-url", spec["base_url"]]
         if spec.get("api_key_env"):
             argv += ["--api-key-env", spec["api_key_env"]]
+        for key, val in (spec.get("headers") or {}).items():
+            argv += ["--api-header", f"{key}={val}"]
         if spec.get("concurrency") is not None:
             argv += ["--api-concurrency", str(spec["concurrency"])]
         if spec.get("max_retries") is not None:

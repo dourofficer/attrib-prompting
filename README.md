@@ -72,6 +72,9 @@ all trajectories; no split is applied at inference time.
 
 ## Evaluation
 
+The complete GPT-4o/GPT-5 sweep, including raw responses and metrics, is
+published under [`results/`](results/README.md).
+
 Decoupled from inference; mirrors the attribscope protocol (verified
 cell-for-cell over 2,424 table cells):
 

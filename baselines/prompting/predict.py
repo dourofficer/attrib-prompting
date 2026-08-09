@@ -121,6 +121,9 @@ def parse_args() -> argparse.Namespace:
                    help="OpenAI-compatible endpoint (default: the OpenAI API).")
     p.add_argument("--api-key-env", default="OPENAI_API_KEY",
                    help="Env var holding the API key.")
+    p.add_argument("--api-header", action="append", default=[], metavar="KEY=VALUE",
+                   help="Extra HTTP header sent with every API request (repeatable), "
+                        "e.g. X-Llmhub-Channel=1.")
     p.add_argument("--api-concurrency", type=int, default=8,
                    help="Max in-flight API requests.")
     p.add_argument("--api-max-retries", type=int, default=6)
@@ -143,6 +146,16 @@ def _api_params(pairs: list[str]) -> dict:
             raise SystemExit(f"--api-param expects KEY=VALUE, got {pair!r}")
         params[key.strip()] = yaml.safe_load(val)
     return params
+
+
+def _api_headers(pairs: list[str]) -> dict[str, str]:
+    headers = {}
+    for pair in pairs:
+        key, sep, val = pair.partition("=")
+        if not sep:
+            raise SystemExit(f"--api-header expects KEY=VALUE, got {pair!r}")
+        headers[key.strip()] = val.strip()
+    return headers
 
 
 def build_backend(args: argparse.Namespace):
@@ -168,6 +181,7 @@ def build_backend(args: argparse.Namespace):
             model=args.model,
             base_url=args.api_base_url,
             api_key_env=args.api_key_env,
+            headers=_api_headers(args.api_header),
             params=_api_params(args.api_param),
             concurrency=args.api_concurrency,
             max_retries=args.api_max_retries,

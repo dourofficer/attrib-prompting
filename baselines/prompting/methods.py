@@ -48,8 +48,8 @@ AGENT_KEY = "role"
 SYSTEM_PROMPT = "You are a helpful assistant skilled in analyzing conversations."
 
 # Parsing regexes — identical to the vendored evaluate.py.
-AGENT_RE = re.compile(r"Agent Name:\s*([\w_]+)", re.IGNORECASE)
-STEP_RE = re.compile(r"Step Number:\s*(\d+)", re.IGNORECASE)
+AGENT_RE = re.compile(r"Agent Name:\s*\(?\s*([\w_]+)\s*\)?", re.IGNORECASE)
+STEP_RE = re.compile(r"Step Number:\s*\(?\s*(\d+)\s*\)?", re.IGNORECASE)
 
 # Markdown decoration to drop before applying the vendored regexes. Reasoning
 # models (e.g. DeepSeek-R1) bold the labels — `**Agent Name:** WebSurfer` — which
