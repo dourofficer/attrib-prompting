@@ -1,25 +1,25 @@
+# CORRECT inference config — CORRECT-Error, local vLLM models.
+# Closed-source API models have their own config: correct-error-api.yaml.
+# Note: data/correct-error carries the restored task answers; run against
+# data/correct-error-nogt (--set data_dir=... outputs_root=...) to reproduce
+# the as-released corpus whose ground-truth slot is blank in schemagen.
 models:  [qwen3.5-9b, deepseek-8b]
 subsets: [arc, gaia, hotpot, math500, mmlu_pro, musique, wikimqa]
+methods: [correct, correct_baseline]
 
 data_dir:     data/correct-error
-outputs_root: outputs-correct-error/correct
+outputs_root: outputs/correct-error
 
-# Retrieved schemata per query — the paper's CORRECT-Error setting (k=5).
-num_schemata: 5
-# CORRECT-Error script retrieval: scan the neighbour ranking until k schemata
-# are found (equivalent to top-k when every trajectory has a schema).
-scan_until_filled: true
+# Paper setting: the detection prompt never contains the answer.
+gt: without
 
-# Offline schema generation (vendored SamplingParams: 0.7 / 0.95 / 1024).
-schema_gen:
-  temperature: 0.7
-  top_p:       0.95
-  max_tokens:  1024
+schema_model: qwen3.5-9b
+embed_model:  ../hub/BAAI/bge-m3
+num_schemata: 5                     # paper A.3: k=5 for all CORRECT-Error runs
 
-# Trajectory embeddings for retrieval (vendored default: BAAI/bge-m3).
-embed_model_path: ../hub/BAAI/bge-m3
+schema_gen: {temperature: 0.7, top_p: 0.95, gen_max_tokens: 1024}
 
-# Inference is greedy in the vendored vLLM path → temperature 0.0.
+# Detection sampling — greedy, as the vendored local CORRECT inference.
 dtype:          bfloat16
 seed:           0
 temperature:    0.0
@@ -35,13 +35,12 @@ tensor_parallel_size:   1
 start_idx: 0
 end_idx:   null
 
-model_paths:
-  qwen3.5-9b:   ../hub/Qwen/Qwen3.5-9B
-  qwen3-8b:     ../hub/Qwen/Qwen3-8B
-  qwen3-14b:    ../hub/Qwen/Qwen3-14B
-  qwen3-27b:    ../hub/Qwen/Qwen3-27B
-  llama-3.1-8b: ../hub/meta-llama/Llama-3.1-8B-Instruct
-  deepseek-8b:  ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
-
-tokenizer_paths:
-  deepseek-8b: baselines/prompting/tokenizers/deepseek-8b
+model_specs:
+  qwen3.5-9b:
+    backend: vllm
+    model_path: ../hub/Qwen/Qwen3.5-9B
+  deepseek-8b:
+    backend: vllm
+    tokenizer: baselines/prompting/tokenizers/deepseek-8b
+    model_path: ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    gen_max_tokens: 8192

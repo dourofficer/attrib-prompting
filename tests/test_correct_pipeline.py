@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -89,3 +91,153 @@ def test_schemagen_slice(tmp_path):
     _schemagen(data, out, "--start_idx", "0", "--end_idx", "2")
     files = sorted(p.name for p in (out / "schemagen").glob("[0-9]*.json"))
     assert files == ["1.json", "2.json"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# predict
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _write_sims(path: Path, mapping: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(mapping))
+    return path
+
+
+def _predict(data_dir: Path, out_dir: Path, method: str, *extra: str,
+             check: bool = True) -> subprocess.CompletedProcess:
+    return run_module(
+        "baselines.correct.predict",
+        "--backend", "dummy", "--model", "dummy-model", "--model-name", "dummy",
+        "--input", str(data_dir), "--output", str(out_dir),
+        "--method", method, *extra, check=check,
+    )
+
+
+def test_predict_correct_e2e_and_resume(tmp_path):
+    data = toy_data_dir(tmp_path)
+    out = tmp_path / "out" / "dummy"
+    _schemagen(data, out)
+    sims = _write_sims(tmp_path / "out" / "_similarities" / "bge-m3.json",
+                       {"1": [2, 3], "2": [1, 3], "3": [1, 2]})
+
+    artifact_args = ("--schemata-dir", str(out / "schemagen"),
+                     "--similarities", str(sims),
+                     "--num-schemata", "2", "--schema-model", "dummy")
+    res = _predict(data, out, "correct", *artifact_args)
+    assert "3 to run" in res.stdout
+    mdir = out / "correct"
+    assert sorted(p.name for p in mdir.glob("[0-9]*.json")) == ["1.json", "2.json", "3.json"]
+
+    doc = json.loads((mdir / "1.json").read_text())
+    for key in ("id", "filename", "question_id", "method", "model", "backend",
+                "gt_in_prompt", "schema_model", "num_schemata", "schema_cases",
+                "predicted_agent", "predicted_step", "gold_agent", "gold_step",
+                "raw", "calls"):
+        assert key in doc, key
+    assert doc["method"] == "correct" and doc["gt_in_prompt"] is False
+    assert doc["schema_cases"] == [2, 3] and doc["num_schemata"] == 2
+    assert doc["schema_model"] == "dummy"
+
+    run_cfg = json.loads((mdir / "_run.json").read_text())
+    assert run_cfg["gt_in_prompt"] is False
+    assert run_cfg["num_schemata"] == 2 and run_cfg["n_with_schemata"] == 3
+    assert run_cfg["similarities"] == str(sims)
+
+    # Resume.
+    (mdir / "3.json").unlink()
+    res2 = _predict(data, out, "correct", *artifact_args)
+    assert "2 done, 1 to run" in res2.stdout
+    res3 = _predict(data, out, "correct", *artifact_args)
+    assert "skip (complete)" in res3.stdout
+
+
+def test_predict_baseline_needs_no_artifacts(tmp_path):
+    data = toy_data_dir(tmp_path)
+    out = tmp_path / "out" / "dummy"
+    _predict(data, out, "correct_baseline")
+    doc = json.loads((out / "correct_baseline" / "2.json").read_text())
+    assert doc["schema_cases"] == [] and doc["num_schemata"] == 0
+    assert doc["schema_model"] is None
+
+
+def test_predict_gt_axis_recorded(tmp_path):
+    data = toy_data_dir(tmp_path)
+    out = tmp_path / "out" / "dummy"
+    _predict(data, out, "correct_baseline", "--gt", "with")
+    doc = json.loads((out / "correct_baseline" / "1.json").read_text())
+    assert doc["gt_in_prompt"] is True
+    run_cfg = json.loads((out / "correct_baseline" / "_run.json").read_text())
+    assert run_cfg["gt_in_prompt"] is True
+
+
+def test_predict_correct_missing_artifacts_exits(tmp_path):
+    data = toy_data_dir(tmp_path)
+    res = _predict(data, tmp_path / "out", "correct", check=False)
+    assert res.returncode != 0
+    err = res.stdout + res.stderr
+    assert "baselines.correct.schemagen" in err and "baselines.correct.similarity" in err
+
+
+def test_predict_method_dir_override(tmp_path):
+    data = toy_data_dir(tmp_path)
+    out = tmp_path / "out" / "dummy"
+    _schemagen(data, out)
+    sims = _write_sims(tmp_path / "out" / "_similarities" / "bge-m3.json",
+                       {"1": [2], "2": [1], "3": [1]})
+    _predict(data, out, "correct", "--method-dir", "correct.k1",
+             "--schemata-dir", str(out / "schemagen"), "--similarities", str(sims))
+    assert (out / "correct.k1" / "1.json").exists()
+    assert not (out / "correct").exists()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# sweep
+# ─────────────────────────────────────────────────────────────────────────────
+
+CONFIGS = ["ww", "ww-api", "correct-error", "correct-error-api",
+           "traceelephant", "traceelephant-api"]
+
+
+@pytest.mark.parametrize("name", CONFIGS)
+def test_sweep_dry_run(name):
+    res = run_module("baselines.correct.sweep",
+                     "--config", f"baselines/correct/configs/{name}.yaml", "--dry-run")
+    out = res.stdout
+    assert "baselines.correct.schemagen" in out
+    assert "baselines.correct.similarity" in out
+    assert "baselines.correct.predict" in out
+    # Default GT setting is 'without': detection mirrors into outputs-nogt/,
+    # stage-1/2 artifacts stay under outputs/.
+    assert "outputs-nogt/" in out and "--gt without" in out.replace("\\\n    ", " ")
+
+
+def test_sweep_e2e_dummy(tmp_path):
+    data = toy_data_dir(tmp_path)  # subset dir name: "data"
+    outputs = tmp_path / "outputs"
+    _write_sims(outputs / "data" / "_similarities" / "bge-m3.json",
+                {"1": [2, 3], "2": [1, 3], "3": [1, 2]})
+    argv = [
+        "--config", "baselines/correct/configs/ww.yaml",
+        "--gt", "with",  # tmp roots can't be mapped by nogt_root
+        "--set", f"data_dir={tmp_path}",
+        "--set", "subsets=[data]",
+        "--set", f"outputs_root={outputs}",
+        "--set", "models=[dummy]",
+        "--set", "schema_model=dummy",
+        "--set", "model_specs={dummy: {backend: dummy}}",
+        "--set", "num_schemata=2",
+        "--set", "embed_model=bge-m3",
+    ]
+    res = run_module("baselines.correct.sweep", *argv)
+    sdir = outputs / "data" / "dummy" / "schemagen"
+    assert len(list(sdir.glob("[0-9]*.json"))) == 3
+    for method in ("correct", "correct_baseline"):
+        mdir = outputs / "data" / "dummy" / method
+        assert len(list(mdir.glob("[0-9]*.json"))) == 3, method
+    doc = json.loads((outputs / "data" / "dummy" / "correct" / "1.json").read_text())
+    assert doc["gt_in_prompt"] is True and doc["schema_cases"] == [2, 3]
+
+    # Second run: schemagen skipped as complete, everything else resumes/skips.
+    res2 = run_module("baselines.correct.sweep", *argv)
+    assert "schemagen complete" in res2.stdout
+    assert res2.stdout.count("skip (complete)") == 2

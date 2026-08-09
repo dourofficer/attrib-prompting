@@ -1,0 +1,40 @@
+# CORRECT inference config — Who&When (ww), closed-source API models.
+# Requires the model's API key in the environment (default: OPENAI_API_KEY).
+models:  [gpt-4o, gpt-5]
+subsets: [algorithm-generated, hand-crafted]
+methods: [correct, correct_baseline]
+
+data_dir:     data/ww
+outputs_root: outputs/ww
+
+# Paper setting (the vendored cloud path never includes the answer).
+gt: without
+
+schema_model: gpt-4o                # swap to gpt-5 to use its schemata instead
+embed_model:  ../hub/BAAI/bge-m3    # stage 2 runs locally (CPU works, GPU faster)
+num_schemata:
+  algorithm-generated: 1            # paper A.3: K_AG=1
+  hand-crafted: 10                  #            K_HC=10
+
+# Stage-1 params replace the spec's params for schemagen (the vendored cloud
+# generator sends max_tokens only — no temperature).
+schema_gen:
+  params: {max_tokens: 4096}
+
+start_idx: 0
+end_idx:   null
+
+# A spec's `params` are sent to the API verbatim — nothing else is added, and
+# _run.json records exactly what was sent. The vendored cloud inference sends
+# max_tokens only (MAX_TOKENS=8192 in run_inference_whoandwhen.sh; temperature
+# is never set → server default).
+model_specs:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    params: {max_tokens: 8192}
+  gpt-5:
+    backend: openai
+    model: gpt-5
+    # The vendored script exports OPENAI_REASONING_EFFORT=medium for gpt-5.
+    params: {max_completion_tokens: 8192, reasoning_effort: medium}

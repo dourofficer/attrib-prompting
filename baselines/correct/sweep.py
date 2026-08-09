@@ -1,104 +1,74 @@
-"""Sweep driver for the CORRECT baseline.
+"""Sweep driver for the CORRECT baseline — the whole 3-stage pipeline.
 
-Grid over models × subsets; per combo, shells out up to three child processes
-(each stage owns its heavy load and is idempotent — it exits early if its
-output already exists, before touching the GPU):
+Per subset it runs, in order, each as a shelled-out idempotent child process:
 
-  1. ``baselines.correct.schemagen``  — per-(model, subset) schema cache
-  2. ``baselines.correct.similarity`` — per-subset ranked neighbours
-     (model-independent: BGE-M3 embeddings; run once, shared by all models)
-  3. ``baselines.correct.predict``    — schema-guided detection
+  1. ``baselines.correct.schemagen``   — once, for ``schema_model`` (skipped
+     when every trajectory already has a schema file);
+  2. ``baselines.correct.similarity``  — once, model-independent (the child
+     itself skips if the output exists);
+  3. ``baselines.correct.predict``     — grid over models × methods.
 
-Mirrors the shared sweep interface used across the repo:
+    python -m baselines.correct.sweep --config <yaml> \\
+        [--set k.sub=v ...] [--gt with|without] [--stages predict] [--dry-run]
 
-    python -m baselines.correct.sweep --config <yaml> [--set k.sub=v ...] [--dry-run]
+Config schema = the prompting sweep's (``model_specs`` etc.) plus:
+
+  schema_model: qwen3.5-9b           # who distills the schemata (all detectors share)
+  embed_model:  ../hub/BAAI/bge-m3   # similarity encoder
+  num_schemata: {hand-crafted: 10, algorithm-generated: 1}   # scalar or per-subset
+  schema_gen:   {temperature: 0.7, ...}   # stage-1 sampling overlay; `params`
+                                          # replaces the spec's params for stage 1
+
+GT axis (GUIDE.md "GT settings"): the vendored cloud path never includes the
+task answer, so this sweep defaults to ``--gt without`` — the paper setting —
+mirroring detection outputs into ``outputs-nogt/``. ``--gt with`` inserts the
+answer line and writes under ``outputs/``. Stage-1/2 artifacts are corpus-scoped
+and GT-independent: they always live under the config's ``outputs_root`` and are
+shared by both settings.
+
+--dry-run prints every stage's command unconditionally (no completeness checks),
+so it works on a clean checkout without models or artifacts.
 """
 from __future__ import annotations
 
 import argparse
-import shlex
-import subprocess
-import sys
 from pathlib import Path
 
-import yaml
-from rich.console import Console
+from baselines.shared.common import nogt_root
+from baselines.prompting.sweep import load_cfg, model_args, run
 
-CONSOLE = Console()
+STAGES = ("schemagen", "similarity", "predict")
 
-
-def load_cfg(path: Path, overrides: list[str]) -> dict:
-    cfg = yaml.safe_load(path.read_text())
-    for ov in overrides:
-        key, _, val = ov.partition("=")
-        parts, node = key.split("."), cfg
-        for p in parts[:-1]:
-            node = node.setdefault(p, {})
-        node[parts[-1]] = yaml.safe_load(val)
-    return cfg
+# Stage-1 sampling defaults = the vendored schema generator's SamplingParams;
+# a config's schema_gen block overrides these, a model spec overrides both.
+_SCHEMA_GEN_DEFAULTS = {"temperature": 0.7, "top_p": 0.95, "gen_max_tokens": 1024}
 
 
-def resolve_model(cfg: dict, model: str) -> str:
-    return cfg.get("model_paths", {}).get(model, model)
-
-
-def resolve_tokenizer(cfg: dict, model: str) -> str | None:
-    return cfg.get("tokenizer_paths", {}).get(model)
-
-
-def resolve_num_schemata(cfg: dict, subset: str) -> int:
-    """``num_schemata`` may be a single int or a per-subset mapping."""
+def _k_for(cfg: dict, subset: str) -> int:
     k = cfg.get("num_schemata", 1)
     if isinstance(k, dict):
+        if subset not in k:
+            raise SystemExit(f"num_schemata has no entry for subset {subset!r}")
         return int(k[subset])
     return int(k)
 
 
-def format_command(module: str, argv: list[str]) -> str:
-    head = f"{sys.executable} -m {module}"
-    if not argv:
-        return head
-    groups, current = [], []
-    for token in argv:
-        if token.startswith("--") and current:
-            groups.append(current)
-            current = []
-        current.append(token)
-    groups.append(current)
-    args = " \\\n    ".join(" ".join(shlex.quote(t) for t in g) for g in groups)
-    return f"{head} \\\n    {args}"
+def _schemagen_complete(data_dir: Path, schemagen_dir: Path) -> bool:
+    if not schemagen_dir.is_dir():
+        return False
+    done = {p.stem for p in schemagen_dir.glob("*.json") if p.stem.isdigit()}
+    ids = {p.stem for p in data_dir.glob("*.json") if p.stem.isdigit()}
+    return bool(ids) and ids <= done
 
 
-def run(module: str, argv: list[str], dry_run: bool) -> None:
-    cmd = [sys.executable, "-m", module, *argv]
-    CONSOLE.print(format_command(module, argv), style="green")
-    CONSOLE.rule()
-    if not dry_run:
-        subprocess.run(cmd, check=True)
-
-
-def index_args(cfg: dict) -> list[str]:
-    argv: list[str] = []
+def _common_argv(cfg: dict, extra_overwrite: bool = True) -> list[str]:
+    argv = []
     if cfg.get("start_idx") is not None:
         argv += ["--start_idx", str(cfg["start_idx"])]
     if cfg.get("end_idx") is not None:
         argv += ["--end_idx", str(cfg["end_idx"])]
-    return argv
-
-
-def engine_args(cfg: dict) -> list[str]:
-    """vLLM/engine knobs shared by schemagen and predict."""
-    argv = [
-        "--dtype", cfg.get("dtype", "bfloat16"),
-        "--seed", str(cfg.get("seed", 0)),
-        "--enable_thinking", str(cfg.get("enable_thinking", False)),
-        "--gpu_memory_utilization", str(cfg.get("gpu_memory_utilization", 0.90)),
-        "--tensor_parallel_size", str(cfg.get("tensor_parallel_size", 1)),
-    ]
-    if cfg.get("max_model_len") is not None:
-        argv += ["--max_model_len", str(cfg["max_model_len"])]
-    if cfg.get("truncate_prompt_tokens") is not None:
-        argv += ["--truncate_prompt_tokens", str(cfg["truncate_prompt_tokens"])]
+    if extra_overwrite and cfg.get("overwrite"):
+        argv += ["--overwrite"]
     return argv
 
 
@@ -106,63 +76,91 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="baselines.correct.sweep")
     p.add_argument("--config", type=Path, required=True)
     p.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+    p.add_argument("--gt", default=None, choices=["with", "without"],
+                   help="GT setting (default: the config's `gt`, else 'without' — "
+                        "the vendored/paper setting for this baseline). 'with' "
+                        "inserts the answer line and writes under outputs/.")
+    p.add_argument("--stages", default=",".join(STAGES),
+                   help=f"Comma-separated subset of {STAGES} to run (default: all).")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
     cfg = load_cfg(args.config, args.overrides)
-    outputs_root = cfg["outputs_root"]
-    schema_gen = cfg.get("schema_gen", {}) or {}
-    overwrite = ["--overwrite"] if cfg.get("overwrite") else []
+    specs = cfg.get("model_specs", {})
+    stages = [s.strip() for s in args.stages.split(",") if s.strip()]
+    for s in stages:
+        if s not in STAGES:
+            raise SystemExit(f"unknown stage {s!r} (expected one of {STAGES})")
 
-    for model in cfg["models"]:
-        model_path = resolve_model(cfg, model)
-        tokenizer_path = resolve_tokenizer(cfg, model)
-        tokenizer = ["--tokenizer", tokenizer_path] if tokenizer_path else []
-        for subset in cfg["subsets"]:
-            num_schemata = resolve_num_schemata(cfg, subset)
-            schemata_path = f"{outputs_root}/schemata/{model}/{subset}/error_schemata.txt"
-            similarities_path = (f"{outputs_root}/similarities/"
-                                 f"{subset}_trajectory_similarities.json")
+    gt = args.gt or cfg.get("gt", "without")
+    if gt not in ("with", "without"):
+        raise SystemExit(f"gt must be 'with' or 'without', got {gt!r}")
+    outputs_root = cfg["outputs_root"]  # stage-1/2 artifacts: GT-independent
+    detect_root = outputs_root if gt == "with" else nogt_root(outputs_root)
 
-            if num_schemata > 0:
-                # 1. Offline schema cache (per model × subset).
-                run("baselines.correct.schemagen", [
-                    "--model", model_path,
-                    *tokenizer,
-                    "--input", f"{cfg['data_dir']}/{subset}",
-                    "--output", f"{outputs_root}/schemata/{model}/{subset}",
-                    "--temperature", str(schema_gen.get("temperature", 0.7)),
-                    "--top_p", str(schema_gen.get("top_p", 0.95)),
-                    "--gen_max_tokens", str(schema_gen.get("max_tokens", 1024)),
-                    *engine_args(cfg),
-                    *overwrite,
-                ], args.dry_run)
+    schema_model = cfg.get("schema_model")
+    embed_model = cfg.get("embed_model", "BAAI/bge-m3")
+    embed_name = Path(str(embed_model)).name
 
-                # 2. Ranked neighbours (per subset, model-independent).
-                run("baselines.correct.similarity", [
-                    "--input", f"{cfg['data_dir']}/{subset}",
-                    "--output", similarities_path,
-                    "--model", cfg.get("embed_model_path", "BAAI/bge-m3"),
-                    *overwrite,
-                ], args.dry_run)
+    for subset in cfg["subsets"]:
+        data_dir = f"{cfg['data_dir']}/{subset}"
+        schemagen_dir = Path(outputs_root) / subset / str(schema_model) / "schemagen"
+        sims_path = Path(outputs_root) / subset / "_similarities" / f"{embed_name}.json"
 
-            # 3. Schema-guided detection.
-            run("baselines.correct.predict", [
-                "--model", model_path,
-                *tokenizer,
-                "--input", f"{cfg['data_dir']}/{subset}",
-                "--output", f"{outputs_root}/{model}/{subset}",
-                *(["--schemata", schemata_path,
-                   "--similarities", similarities_path] if num_schemata > 0 else []),
-                "--num_schemata", str(num_schemata),
-                "--scan_until_filled", str(cfg.get("scan_until_filled", False)),
-                "--temperature", str(cfg.get("temperature", 0.0)),
-                "--top_p", str(cfg.get("top_p", 1.0)),
-                "--gen_max_tokens", str(cfg.get("gen_max_tokens", 1024)),
-                *engine_args(cfg),
-                *index_args(cfg),
-                *overwrite,
-            ], args.dry_run)
+        if "schemagen" in stages:
+            if not schema_model:
+                raise SystemExit("config needs schema_model for the schemagen stage")
+            if args.dry_run or cfg.get("overwrite") \
+                    or not _schemagen_complete(Path(data_dir), schemagen_dir):
+                if schema_model not in specs:
+                    raise SystemExit(f"no model_specs entry for schema_model {schema_model!r}")
+                sg = {**_SCHEMA_GEN_DEFAULTS, **(cfg.get("schema_gen") or {})}
+                sg_spec = {**specs[schema_model],
+                           **({"params": sg["params"]} if "params" in sg else {})}
+                sg_cfg = {**cfg, **{k: v for k, v in sg.items() if k != "params"}}
+                argv = [
+                    *model_args(schema_model, sg_spec, sg_cfg),
+                    "--model-name", schema_model,
+                    "--input", data_dir,
+                    "--output", f"{outputs_root}/{subset}/{schema_model}",
+                    *_common_argv(cfg),
+                ]
+                run("baselines.correct.schemagen", argv, args.dry_run)
+            else:
+                print(f"  schemagen complete: {schemagen_dir}")
+
+        if "similarity" in stages and (args.dry_run or not sims_path.exists()):
+            argv = ["--input", data_dir, "--output", str(sims_path), "--model", str(embed_model)]
+            if cfg.get("embed_batch_size") is not None:
+                argv += ["--batch_size", str(cfg["embed_batch_size"])]
+            if cfg.get("embed_max_length") is not None:
+                argv += ["--max_length", str(cfg["embed_max_length"])]
+            run("baselines.correct.similarity", argv, args.dry_run)
+
+        if "predict" not in stages:
+            continue
+        for model in cfg["models"]:
+            if model not in specs:
+                raise SystemExit(f"no model_specs entry for {model!r}")
+            spec = specs[model]
+            for method in cfg["methods"]:
+                argv = [
+                    *model_args(model, spec, cfg),
+                    "--model-name", model,
+                    "--input", data_dir,
+                    "--output", f"{detect_root}/{subset}/{model}",
+                    "--method", method,
+                    "--gt", gt,
+                ]
+                if method == "correct":
+                    argv += [
+                        "--schemata-dir", str(schemagen_dir),
+                        "--similarities", str(sims_path),
+                        "--num-schemata", str(_k_for(cfg, subset)),
+                        "--schema-model", str(schema_model),
+                    ]
+                argv += _common_argv(cfg)
+                run("baselines.correct.predict", argv, args.dry_run)
 
 
 if __name__ == "__main__":
