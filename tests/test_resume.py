@@ -97,3 +97,27 @@ def test_predict_resume_skips_done(tmp_path):
     assert doc["method"] == "all_at_once" and doc["model"] == "dummy"
     assert doc["gold_agent"] == "Worker" and doc["gold_step"] == 1
     assert doc["calls"] and doc["raw"]
+
+
+def test_predict_gt_without_recorded(tmp_path):
+    data = _toy_data_dir(tmp_path)
+    out = tmp_path / "out-nogt"
+    _predict(data, out, "--gt", "without")
+    doc = json.loads((out / "all_at_once" / "1.json").read_text())
+    assert doc["gt_in_prompt"] is False
+    run_cfg = json.loads((out / "all_at_once" / "_run.json").read_text())
+    assert run_cfg["gt_in_prompt"] is False
+
+
+def test_nogt_root_mapping():
+    import pytest
+
+    from baselines.shared.common import nogt_root
+
+    assert nogt_root("outputs/ww") == "outputs-nogt/ww"
+    assert nogt_root("outputs/ww/reports") == "outputs-nogt/ww/reports"
+    assert nogt_root("outputs") == "outputs-nogt"
+    with pytest.raises(ValueError):
+        nogt_root("results/ww")
+    with pytest.raises(ValueError):
+        nogt_root("outputs-x/ww")

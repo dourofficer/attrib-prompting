@@ -60,3 +60,18 @@ def standardize_role(role: str) -> str:
     if "orchestrator" in role.lower():
         return "Orchestrator"
     return role
+
+
+def nogt_root(path: str) -> str:
+    """Map a with-GT output root to its without-GT sibling.
+
+    Convention: ``outputs/<...>`` ↔ ``outputs-nogt/<...>`` — same inner layout,
+    sibling root, so the two settings never collide.
+    """
+    path = str(path)
+    if path == "outputs" or path.startswith("outputs/"):
+        return "outputs-nogt" + path[len("outputs"):]
+    raise ValueError(
+        f"cannot derive the without-GT root for {path!r}: expected a path under "
+        "'outputs/' (set the root explicitly if you use a custom layout)"
+    )

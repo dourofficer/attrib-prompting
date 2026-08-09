@@ -5,8 +5,8 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: MODEL=<name> DATASET=<ww|correct-error|traceelephant> [SUBSET=<subset>] scripts/${METHOD}.sh" >&2
-  echo "Optional env: GPU, START_IDX, END_IDX, DRY_RUN=1, OVERWRITE=1, EXTRA_SET=\"--set k=v ...\"" >&2
+  echo "Usage: MODEL=<name> DATASET=<ww|correct-error|correct-error-gt|traceelephant> [SUBSET=<subset>] scripts/${METHOD}.sh" >&2
+  echo "Optional env: GT=with|without, GPU, START_IDX, END_IDX, DRY_RUN=1, OVERWRITE=1, EXTRA_SET=\"--set k=v ...\"" >&2
   exit 1
 }
 [[ -n "${MODEL:-}" && -n "${DATASET:-}" ]] || usage
@@ -34,6 +34,8 @@ ARGS=(--config "$CONFIG"
       --set "models=[${MODEL}]"
       --set "methods=[${METHOD}]")
 [[ -n "${SUBSET:-}" ]]    && ARGS+=(--set "subsets=[${SUBSET}]")
+# GT=without drops the answer line from prompts and mirrors into outputs-nogt/.
+[[ -n "${GT:-}" ]]        && ARGS+=(--gt "${GT}")
 [[ -n "${START_IDX:-}" ]] && ARGS+=(--set "start_idx=${START_IDX}")
 [[ -n "${END_IDX:-}" ]]   && ARGS+=(--set "end_idx=${END_IDX}")
 [[ "${OVERWRITE:-0}" == 1 ]] && ARGS+=(--set "overwrite=true")

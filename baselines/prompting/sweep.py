@@ -29,6 +29,8 @@ from pathlib import Path
 import yaml
 from rich.console import Console
 
+from baselines.shared.common import nogt_root
+
 CONSOLE = Console()
 
 # vLLM knobs a model spec may override; anything unset falls back to the
@@ -136,11 +138,20 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="baselines.prompting.sweep")
     p.add_argument("--config", type=Path, required=True)
     p.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+    p.add_argument("--gt", default=None, choices=["with", "without"],
+                   help="GT setting (default: the config's `gt`, else 'with'). "
+                        "'without' drops the answer line from every prompt and "
+                        "mirrors outputs into outputs-nogt/.")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
     cfg = load_cfg(args.config, args.overrides)
     specs = cfg.get("model_specs", {})
+
+    gt = args.gt or cfg.get("gt", "with")
+    if gt not in ("with", "without"):
+        raise SystemExit(f"gt must be 'with' or 'without', got {gt!r}")
+    outputs_root = cfg["outputs_root"] if gt == "with" else nogt_root(cfg["outputs_root"])
 
     for model in cfg["models"]:
         if model not in specs:
@@ -152,8 +163,9 @@ def main() -> None:
                     *model_args(model, spec, cfg),
                     "--model-name", model,
                     "--input", f"{cfg['data_dir']}/{subset}",
-                    "--output", f"{cfg['outputs_root']}/{subset}/{model}",
+                    "--output", f"{outputs_root}/{subset}/{model}",
                     "--method", method,
+                    "--gt", gt,
                 ]
                 if cfg.get("step_mode"):
                     argv += ["--step-mode", str(cfg["step_mode"])]

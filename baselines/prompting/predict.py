@@ -101,6 +101,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--step-mode", default="auto", choices=["auto", "batch", "early_stop"],
                    help="step_by_step execution mode; auto = batch for vllm, "
                         "early_stop (the vendored control flow) otherwise.")
+    p.add_argument("--gt", default="with", choices=["with", "without"],
+                   help="'without' removes the 'The Answer for the problem is:' line "
+                        "from every prompt. Affects prompts only — point --output at "
+                        "an outputs-nogt/ root to keep the settings apart.")
     # vLLM-only knobs
     p.add_argument("--tokenizer", default=None,
                    help="Optional tokenizer path override (e.g. a corrected tokenizer dir).")
@@ -210,6 +214,7 @@ def main() -> None:
     step_mode = args.step_mode
     if step_mode == "auto":
         step_mode = "early_stop" if backend.prefers_streaming else "batch"
+    include_gt = args.gt == "with"
 
     writer.write_run_config({
         "model": model_name,
@@ -219,6 +224,7 @@ def main() -> None:
         "backend": args.backend,
         "request_params": backend.request_params,
         "step_mode": step_mode if args.method == "step_by_step" else None,
+        "gt_in_prompt": include_gt,
         "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "n_total": len(records),
         "n_already_done": len(done),
@@ -234,6 +240,7 @@ def main() -> None:
             "method": args.method,
             "model": model_name,
             "backend": args.backend,
+            "gt_in_prompt": include_gt,
             "predicted_agent": pred["predicted_agent"],
             "predicted_step": pred["predicted_step"],
             "gold_agent": record["gold_agent"],
@@ -243,7 +250,8 @@ def main() -> None:
         }
         writer.write(record["id"], doc)
 
-    programs = [(r, METHODS[args.method](r, step_mode=step_mode)) for r in remaining]
+    programs = [(r, METHODS[args.method](r, step_mode=step_mode, include_gt=include_gt))
+                for r in remaining]
 
     t0 = time.perf_counter()
     if backend.prefers_streaming:

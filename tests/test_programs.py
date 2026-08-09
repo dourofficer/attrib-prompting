@@ -119,3 +119,21 @@ def test_empty_history_binary_search_no_calls():
     assert be.batch_sizes == []  # program finished without yielding
     assert preds["1"]["predicted_step"] is None
     assert preds["1"]["calls"] == []
+
+
+def test_include_gt_false_strips_answer_line_everywhere():
+    records = _records([3, 4])
+    for method in ("all_at_once", "step_by_step", "binary_search"):
+        be = DummyBackend()  # default responder parses for every method
+        preds = {}
+        programs = [(r, METHODS[method](r, include_gt=False)) for r in records]
+        run_streaming(programs, be, lambda r, p: preds.__setitem__(r["id"], p))
+        assert be.calls, method
+        for messages in be.calls:
+            assert "The Answer for the problem is:" not in messages[1]["content"], method
+        assert all(p["predicted_step"] is not None for p in preds.values()), method
+
+    # default include_gt=True keeps the line (ground_truth "a0" from _records)
+    be = DummyBackend()
+    run_streaming([(records[0], METHODS["all_at_once"](records[0]))], be, lambda r, p: None)
+    assert "The Answer for the problem is: a0\n" in be.calls[0][1]["content"]

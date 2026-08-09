@@ -29,6 +29,10 @@ DEFAULT_PRED_ROOTS = [
     "outputs/ww",
     "outputs/correct-error",
     "outputs/traceelephant",
+    # without-GT mirrors (missing roots are simply skipped)
+    "outputs-nogt/ww",
+    "outputs-nogt/correct-error",
+    "outputs-nogt/traceelephant",
 ]
 
 

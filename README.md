@@ -17,10 +17,21 @@ parity tests.
 |---|---|---|---|
 | `ww` (Who&When) | algorithm-generated (126), hand-crafted (58) | yes | 1–20 |
 | `correct-error` | arc (304), gaia (50), hotpot (578), math500 (157), mmlu_pro (92), musique (312), wikimqa (733) | no | 1–3 |
+| `correct-error-gt` | same 2,226 trajectories, task answer restored | yes | 1–3 |
 | `traceelephant` | magentic (91), captain (85) | yes | 1–20 |
 
 Corpora live at `data/<dataset>/<subset>/<id>.json`; agent identity is
 `history[t]["role"]`, gold labels are `mistake_agent`/`mistake_step`.
+
+The "answer in prompt?" column is not a flag — it is whether the record carries a
+non-empty `ground_truth`, which the prompt builders interpolate unconditionally.
+CORRECT-Error ships that field empty upstream, so `correct-error-gt` re-joins each
+record to its source benchmark (`question_id` = `task<N>_<K>`, where N is a row
+index into the source split) and fills it in; see
+[`scripts/build_correct_error_gt.py`](scripts/build_correct_error_gt.py). The two
+corpora share filename stems, so their per-seed splits are identical and
+`correct-error` vs `correct-error-gt` is an exact paired with-GT/without-GT
+comparison.
 
 ## Install
 
@@ -70,6 +81,23 @@ API backends step_by_step early-stops at the first "Yes" (the vendored control
 flow, ~50% fewer calls, provably identical predictions). Inference always covers
 all trajectories; no split is applied at inference time.
 
+### GT settings
+
+`--gt with` (default) keeps prompts byte-identical to the vendored code, which
+interpolates the task answer. `--gt without` removes the
+`The Answer for the problem is: ...` line and nothing else — the removal the
+vendored comments themselves sanction. Without-GT results mirror into
+**`outputs-nogt/`** with the identical inner layout, so the two settings never
+collide; `gt_in_prompt` is recorded in `_run.json` and in every output file.
+
+```bash
+GT=without MODEL=gpt-4o DATASET=ww bash scripts/all_at_once.sh   # or --gt on predict/sweep
+python -m baselines.prompting.report --config .../report_ww.yaml --gt without
+```
+
+For CORRECT-Error the flag only removes an empty line (the corpus ships no
+answer) — use the `correct-error-gt` corpus for a real paired comparison.
+
 ## Evaluation
 
 The complete GPT-4o/GPT-5 sweep, including raw responses and metrics, is
@@ -87,7 +115,8 @@ stems, seeded shuffle, 0.3/0.2/0.5). `step@1` = integer equality; `agent@1` =
 normalized match (gold may be a substring of the prediction); missing
 predictions count as wrong. Tables land in `outputs/<ds>/reports/`
 (`comparison_by_seed.tsv` per model/subset + `summary_mean_over_seeds.tsv`,
-with split-independent `*_full` columns over the whole corpus).
+with split-independent `*_full` columns over the whole corpus); `--gt without`
+reads and writes the `outputs-nogt/` mirror instead.
 
 Utilities: `python -m baselines.prompting.reparse` re-derives all_at_once
 predictions from stored `raw` (no GPU); `scripts/import_legacy_jsonl.py`

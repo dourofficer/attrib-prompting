@@ -39,7 +39,12 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from baselines.shared.common import _get_sorted_json_files, split_data, standardize_role
+from baselines.shared.common import (
+    _get_sorted_json_files,
+    nogt_root,
+    split_data,
+    standardize_role,
+)
 
 METHODS_DEFAULT = ["all_at_once", "step_by_step", "binary_search"]
 
@@ -233,10 +238,24 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="baselines.prompting.report")
     p.add_argument("--config", type=Path, required=True)
     p.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+    p.add_argument("--gt", default=None, choices=["with", "without"],
+                   help="Which setting to evaluate (default: the config's `gt`, else "
+                        "'with'). 'without' reads/writes the outputs-nogt/ mirror.")
     p.add_argument("--check-only", action="store_true", help="Only print/write the completion status.")
     args = p.parse_args()
 
     cfg = load_cfg(args.config, args.overrides)
+
+    # gt: 'without' evaluates the outputs-nogt/ mirror; the gt_in_prompt table
+    # column then follows the run setting, not the corpus-level config flag.
+    gt = args.gt or cfg.get("gt", "with")
+    if gt not in ("with", "without"):
+        raise SystemExit(f"gt must be 'with' or 'without', got {gt!r}")
+    if gt == "without":
+        cfg["pred_root"] = nogt_root(cfg["pred_root"])
+        cfg["out_root"] = nogt_root(cfg["out_root"])
+        cfg["gt_in_prompt"] = False
+
     out_root = Path(cfg["out_root"])
     out_root.mkdir(parents=True, exist_ok=True)
 

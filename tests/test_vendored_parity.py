@@ -223,3 +223,32 @@ def test_parse_all_at_once_variants():
     parenthesized = "Agent Name: (Planner)\n, Step Number: (9)\n, Reason: bad plan"
     assert parse_all_at_once(parenthesized) == ("Planner", 9)
     assert parse_all_at_once("no structured answer") == (None, None)
+
+
+def test_without_gt_removes_only_the_answer_line():
+    # include_gt=False must equal the with-GT golden minus exactly the
+    # "The Answer for the problem is: <gt>\n" line — nothing else changes.
+    gt_line = f"The Answer for the problem is: {RECORD['ground_truth']}\n"
+
+    with_gt = build_all_at_once_prompt(HISTORY[:3], RECORD["question"], RECORD["ground_truth"])
+    without = build_all_at_once_prompt(HISTORY[:3], RECORD["question"], RECORD["ground_truth"],
+                                       include_gt=False)
+    assert with_gt == GOLDENS["all_at_once"]
+    assert without == with_gt.replace(gt_line, "")
+    assert "The Answer for the problem is:" not in without
+
+    acc = "Step 0 - Orchestrator: Plan: search the web, then compute.\n"
+    with_gt = build_step_by_step_prompt(RECORD["question"], RECORD["ground_truth"], acc, 0, "Orchestrator")
+    without = build_step_by_step_prompt(RECORD["question"], RECORD["ground_truth"], acc, 0, "Orchestrator",
+                                        include_gt=False)
+    assert with_gt == GOLDENS["step_by_step"]
+    assert without == with_gt.replace(gt_line, "")
+
+    seg = "Orchestrator: Plan: search the web, then compute.\nWebSurfer: I found the population is 8,336,000."
+    kw = dict(range_description="from step 0 to step 1", upper_half_desc="from step 0 to step 0",
+              lower_half_desc="from step 1 to step 1")
+    with_gt = build_binary_search_prompt(RECORD["question"], RECORD["ground_truth"], seg, **kw)
+    without = build_binary_search_prompt(RECORD["question"], RECORD["ground_truth"], seg,
+                                         include_gt=False, **kw)
+    assert with_gt == GOLDENS["binary_search"]
+    assert without == with_gt.replace(gt_line, "")

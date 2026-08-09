@@ -13,7 +13,11 @@ open-model path). The only deliberate deviations:
   * ``step_by_step`` has two execution modes (see below); the vendored code
     early-stops at the first "Yes", and both modes produce that exact
     prediction because the per-step judgment depends only on the deterministic
-    accumulated history.
+    accumulated history, and
+  * every builder/program takes ``include_gt`` (default ``True`` = verbatim).
+    ``include_gt=False`` removes the ``The Answer for the problem is: ...``
+    line and nothing else — the removal the vendored ``utils.py`` comments
+    themselves sanction ("remove if ground truth shouldn't be used in prompt").
 
 Each method is a **generator program** over a single trajectory: it yields one
 round's prompts (a list of chat message lists), receives that round's decoded
@@ -112,14 +116,15 @@ def _messages(user_prompt: str) -> list[dict]:
 # Prompt builders (verbatim from local_model.py)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_all_at_once_prompt(history: list[dict], problem: str, ground_truth: str) -> str:
+def build_all_at_once_prompt(history: list[dict], problem: str, ground_truth: str,
+                             include_gt: bool = True) -> str:
     chat_content = "\n".join(
         f"{_agent_of(entry)}: {entry.get('content', '')}" for entry in history
     )
     return (
         "You are an AI assistant tasked with analyzing a multi-agent conversation history when solving a real world problem. "
         f"The problem is:  {problem} \n"
-        f"The Answer for the problem is: {ground_truth}\n"
+        + (f"The Answer for the problem is: {ground_truth}\n" if include_gt else "") +
         "Identify which agent made an error, at which step, and explain the reason for the error. "
         "Here's the conversation:\n\n" + chat_content +
         "\n\nBased on this conversation, please predict the following:\n"
@@ -133,11 +138,12 @@ def build_all_at_once_prompt(history: list[dict], problem: str, ground_truth: st
 
 
 def build_step_by_step_prompt(
-    problem: str, ground_truth: str, current_conversation_history: str, idx: int, agent_name: str
+    problem: str, ground_truth: str, current_conversation_history: str, idx: int, agent_name: str,
+    include_gt: bool = True,
 ) -> str:
     return (
         f"You are an AI assistant tasked with evaluating the correctness of each step in an ongoing multi-agent conversation aimed at solving a real-world problem. The problem being addressed is: {problem}. "
-        f"The Answer for the problem is: {ground_truth}\n"
+        + (f"The Answer for the problem is: {ground_truth}\n" if include_gt else "") +
         f"Here is the conversation history up to the current step:\n{current_conversation_history}\n"
         f"The most recent step ({idx}) was by '{agent_name}'.\n"
         # NOTE: this line is a plain (non-f) string in the source, so the literal
@@ -156,12 +162,13 @@ def build_binary_search_prompt(
     range_description: str,
     upper_half_desc: str,
     lower_half_desc: str,
+    include_gt: bool = True,
 ) -> str:
     return (
         "You are an AI assistant tasked with analyzing a segment of a multi-agent conversation. Multiple agents are collaborating to address a user query, with the goal of resolving the query through their collective dialogue.\n"
         "Your primary task is to identify the location of the most critical mistake within the provided segment. Determine which half of the segment contains the single step where this crucial error occurs, ultimately leading to the failure in resolving the user’s query.\n"
         f"The problem to address is as follows: {problem}\n"
-        f"The Answer for the problem is: {answer}\n"
+        + (f"The Answer for the problem is: {answer}\n" if include_gt else "") +
         f"Review the following conversation segment {range_description}:\n\n{chat_segment_content}\n\n"
         f"Based on your analysis, predict whether the most critical error is more likely to be located in the upper half ({upper_half_desc}) or the lower half ({lower_half_desc}) of this segment.\n"
         "Please simply output either 'upper half' or 'lower half'. You should not output anything else."
@@ -179,9 +186,11 @@ def _empty_pred() -> dict:
     return {"predicted_agent": None, "predicted_step": None, "raw": None, "calls": []}
 
 
-def all_at_once_program(record: dict, *, step_mode: str = "batch") -> Program:
+def all_at_once_program(record: dict, *, step_mode: str = "batch",
+                        include_gt: bool = True) -> Program:
     prompt = _messages(
-        build_all_at_once_prompt(record["history"], record["question"], record["ground_truth"])
+        build_all_at_once_prompt(record["history"], record["question"], record["ground_truth"],
+                                 include_gt=include_gt)
     )
     raw = (yield [prompt])[0]
     agent, step = parse_all_at_once(raw)
@@ -198,7 +207,8 @@ def _fires(raw: str) -> bool:
     return strip_think(raw).lower().strip().startswith("1. yes")
 
 
-def step_by_step_program(record: dict, *, step_mode: str = "batch") -> Program:
+def step_by_step_program(record: dict, *, step_mode: str = "batch",
+                         include_gt: bool = True) -> Program:
     # Prompt construction is shared by both modes: the judgment at step idx
     # depends only on the deterministic accumulated history, so the prompt
     # bytes are identical whether or not later steps are ever issued.
@@ -210,7 +220,8 @@ def step_by_step_program(record: dict, *, step_mode: str = "batch") -> Program:
         content = entry.get("content", "")
         acc += f"Step {idx} - {agent_name}: {content}\n"
         prompts.append(_messages(
-            build_step_by_step_prompt(record["question"], record["ground_truth"], acc, idx, agent_name)
+            build_step_by_step_prompt(record["question"], record["ground_truth"], acc, idx, agent_name,
+                                      include_gt=include_gt)
         ))
         metas.append((idx, agent_name))
 
@@ -239,7 +250,8 @@ def step_by_step_program(record: dict, *, step_mode: str = "batch") -> Program:
     return pred
 
 
-def binary_search_program(record: dict, *, step_mode: str = "batch") -> Program:
+def binary_search_program(record: dict, *, step_mode: str = "batch",
+                          include_gt: bool = True) -> Program:
     history = record["history"]
     pred = _empty_pred()
     start, end = 0, len(history) - 1  # empty history → start > end → no rounds
@@ -258,6 +270,7 @@ def binary_search_program(record: dict, *, step_mode: str = "batch") -> Program:
             range_description=f"from step {start} to step {end}",
             upper_half_desc=f"from step {start} to step {mid}",
             lower_half_desc=f"from step {mid + 1} to step {end}",
+            include_gt=include_gt,
         )
         raw = (yield [_messages(prompt)])[0]
         pred["calls"].append(

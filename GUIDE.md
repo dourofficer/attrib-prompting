@@ -62,6 +62,23 @@ trajectory is complete: use `baselines.shared.runner.OutputWriter`
   exhaust retries is logged and **skipped without writing**, so a rerun picks
   it up.
 
+## GT settings — support both
+
+Every baseline runs in two settings: **with-GT** (default; the task answer
+appears in prompts exactly as the vendored code puts it there) and
+**without-GT** (that material removed, in whatever way is faithful for the
+method — for prompting it is dropping the `The Answer for the problem is:`
+line). Conventions:
+
+- `predict` and `sweep` expose `--gt {with,without}` (default `with`); the
+  method's prompt builders take a plain `include_gt: bool = True` so the
+  with-GT bytes stay the parity-tested default.
+- With-GT results live under `outputs/`; without-GT results mirror into
+  **`outputs-nogt/`** with the identical inner layout — map roots with
+  `baselines.shared.common.nogt_root`, never invent another scheme.
+- `gt_in_prompt` is recorded in `_run.json` and in every per-trajectory doc;
+  the report takes the same `--gt` flag and evaluates the matching tree.
+
 ## Execution
 
 Get models through `baselines.shared.backends.get_backend()` — never import
@@ -107,6 +124,7 @@ add the method to `methods:` in `configs/report_<ds>.yaml` (or reuse
 - [ ] Core prompts/parsers verbatim from `vendored/`; deviations documented
 - [ ] Reads records via `load_records`; writes per-trajectory files via `OutputWriter`
 - [ ] Resumes from existing files; `--overwrite` supported
+- [ ] Both GT settings via `--gt`; without-GT mirrors into `outputs-nogt/`
 - [ ] Runs on all backends through `get_backend()`; `_run.json` records what was sent
 - [ ] `<ds>.yaml` + `<ds>-api.yaml` configs with `model_specs`; sweep with `--dry-run`
 - [ ] Outputs readable by the shared report (`--check-only` shows DONE)

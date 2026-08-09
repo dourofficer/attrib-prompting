@@ -5,7 +5,7 @@ Front doors for running one attribution method at a time, plus utilities.
 ## Per-method scripts
 
 ```bash
-MODEL=<name> DATASET=<ww|correct-error|traceelephant> [SUBSET=<subset>] bash scripts/<method>.sh
+MODEL=<name> DATASET=<ww|correct-error|correct-error-gt|traceelephant> [SUBSET=<subset>] bash scripts/<method>.sh
 ```
 
 where `<method>.sh` is one of `all_at_once.sh`, `step_by_step.sh`, `binary_search.sh`.
@@ -32,8 +32,9 @@ MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 bash scripts/all_at_once.
 | var | meaning |
 |---|---|
 | `MODEL` (required) | model name — must be declared in the dataset's config `model_specs` |
-| `DATASET` (required) | `ww`, `correct-error`, or `traceelephant` |
+| `DATASET` (required) | `ww`, `correct-error`, `correct-error-gt`, or `traceelephant` |
 | `SUBSET` | one subset; omit to run all subsets of the dataset |
+| `GT` | `with` (default) or `without` — drops the answer line from prompts and writes to `outputs-nogt/` |
 | `GPU` | sets `CUDA_VISIBLE_DEVICES` (local vLLM models) |
 | `START_IDX` / `END_IDX` | slice of the (numerically sorted) trajectories |
 | `DRY_RUN=1` | print the predict command(s) without running |
@@ -121,5 +122,10 @@ binary_search} × {ww, traceelephant, correct-error} results. Target models:
 
 - `import_legacy_jsonl.py` — convert a legacy `predictions_method-*.jsonl`
   tree into the per-trajectory output layout (see its docstring).
+- `build_correct_error_gt.py` — one-off: build `data/correct-error-gt/` by
+  restoring the task answer CORRECT-Error ships empty, re-joining each record to
+  its source benchmark on the row index in `question_id`. Needs `pip install -e
+  ".[data]"`. Already committed, so you only rerun it to audit the join
+  (`--dry-run` prints per-subset agreement and every outlier).
 - `../baselines/prompting/scripts/run_qwen.sh`, `run_deepseek.sh` — per-model
   wrappers that sweep all datasets × methods for one local model on one GPU.
