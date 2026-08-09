@@ -241,3 +241,40 @@ def test_sweep_e2e_dummy(tmp_path):
     res2 = run_module("baselines.correct.sweep", *argv)
     assert "schemagen complete" in res2.stdout
     assert res2.stdout.count("skip (complete)") == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# report integration (shared report reads the correct method dirs)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_report_reads_correct_outputs(tmp_path):
+    data = toy_data_dir(tmp_path)
+    subset_data = tmp_path / "corpus" / "sub"
+    subset_data.mkdir(parents=True)
+    for f in data.glob("*.json"):
+        (subset_data / f.name).write_text(f.read_text())
+
+    pred_root = tmp_path / "pred"
+    out = pred_root / "sub" / "dummy"
+    _predict(subset_data, out, "correct_baseline")
+
+    report_cfg = tmp_path / "report.yaml"
+    report_cfg.write_text(f"""
+models:  [dummy]
+subsets: [sub]
+methods: [correct_baseline]
+gt: with
+data_dir:  {tmp_path / "corpus"}
+pred_root: {pred_root}
+out_root:  {tmp_path / "reports"}
+splits: {{train: 0.3, val: 0.2, test: 0.5}}
+seeds: [1, 2]
+gt_in_prompt: false
+""")
+    res = run_module("baselines.correct.report", "--config", str(report_cfg), "--check-only")
+    assert "DONE" in res.stdout
+    res2 = run_module("baselines.correct.report", "--config", str(report_cfg))
+    assert (tmp_path / "reports" / "summary_mean_over_seeds.tsv").exists()
+    per_seed = tmp_path / "reports" / "dummy" / "sub" / "comparison_by_seed.tsv"
+    assert per_seed.exists()
+    assert "correct_baseline_step@1_test" in per_seed.read_text().splitlines()[0]
