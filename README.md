@@ -100,7 +100,7 @@ baselines/shared/              method-agnostic infra: common.py helpers,
                                backends/ (vllm|openai|dummy), runner.py (drivers, writer)
 baselines/prompting/           the three methods (verbatim prompts), predict/sweep/report,
                                configs/ (<ds>.yaml vLLM, <ds>-api.yaml APIs), per-model scripts
-baselines/{chief,correct}/     further baselines, not yet adapted
+baselines/{chief,correct}/     further baselines, not yet adapted (see GUIDE.md)
 data/                          corpora   ·  vendored/  upstream code, verbatim
 outputs/                       committed results  ·  scripts/  per-method front doors
 tests/                         CPU-only, keyless (pytest)
