@@ -1,63 +1,88 @@
-"""Offline error-schema generation — one (model, subset) per invocation.
+"""CORRECT stage 1 — offline error-schema distillation, one call per trajectory.
 
-Port of ``baselines/CORRECT/src/error_schema_generator.py``: for every annotated
-trajectory, an LLM distills the gold error (agent / step / reason) plus the full
-conversation into a reusable "error schema"; all schemata for a subset are
-written to one vendored-format ``error_schemata.txt`` (block per trajectory,
-keyed by the trajectory's numeric filename — see ``retrieval.py``).
+For every annotated failed trajectory, an LLM distills an **error schema** from
+the gold labels (mistake agent/step/reason + the conversation). The prompt is
+copied **verbatim** from the vendored cloud generator
+(``vendored/CORRECT/src/error_schema_generator_cloud.py::create_prompt``) — the
+variant that produced the schemata behind the paper's Who&When results: history
+serialized WITH step indices and a trailing format block that embeds the
+trajectory's gold ``Agent Name`` / ``Step Number``. Retrieved schemata therefore
+carry their source trajectory's gold labels into the detection prompt; that is
+deliberate and part of the method.
 
-Prompt and system prompt are verbatim; sampling defaults match the vendored
-``SamplingParams(temperature=0.7, top_p=0.95, max_tokens=1024)``. Deviations
-(see README): vLLM via :class:`PromptEngine` (one batched call instead of the
-vendored print-batching loop), no YaRN rope hack (native long-context models),
-``ground_truth`` key (vendored reads the raw CORRECT-Error ``groundtruth`` key;
-this repo's normalized data stores ``ground_truth``), and ``strip_think`` on
-each generated schema so reasoning traces never leak into future retrieval
-prompts.
+Deliberate deviations (see README):
+  * the agent key is fixed to ``role`` — the vendored autodetect ("name" if
+    present in the first entry) targeted the *original* Who&When layout; this
+    repo's algorithm-generated data swaps the fields (``role`` = agent name,
+    ``name`` = user/assistant), so ``role`` reproduces what the vendored code
+    yields on the original data;
+  * schemata are stored as per-trajectory JSONs keyed by trajectory id
+    (``{output}/schemagen/<id>.json``, resume for free) instead of one
+    ``error_schemata.txt`` with fragile 1-based enumeration;
+  * the ``schema`` field is ``strip_think``'d so local reasoning models work;
+    the decisive ``raw`` is stored untouched.
 
 Usage
 -----
 python -m baselines.correct.schemagen \
-    --model  ../hub/Qwen/Qwen3.5-9B \
-    --input  data/ww/hand-crafted \
-    --output outputs-ww/correct/schemata/qwen3.5-9b/hand-crafted
+    --model ../hub/Qwen/Qwen3.5-9B --model-name qwen3.5-9b \
+    --input data/ww/hand-crafted \
+    --output outputs/ww/hand-crafted/qwen3.5-9b
 
-Output: {output}/error_schemata.txt (+ config.json snapshot).
-Idempotent: skips if the schemata file already exists unless --overwrite.
+Output: {output}/schemagen/<id>.json  (+ _run.json snapshot). File existence is
+the resume ledger; ``--overwrite`` clears the directory.
 """
 from __future__ import annotations
 
 import argparse
-import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
-from src.utils.common import _get_sorted_json_files, _load_json_data
+from baselines.shared.common import _load_json_data
+from baselines.shared.runner import OutputWriter, run_batched, run_streaming
+from baselines.prompting.predict import build_backend, load_records, _bool
 
-from .engine import PromptEngine, strip_think
-from .retrieval import write_schemata_file
+from .methods import Program, strip_think
 
-SYSTEM_PROMPT = (
-    "You are a helpful assistant skilled in analyzing conversations and creating "
-    "schemata for error detection."
-)
+SCHEMAGEN_SYSTEM = ("You are a helpful assistant skilled in analyzing conversations "
+                    "and creating schemata for error detection.")
+
+# The agent identity lives in the "role" field for every dataset in this repo.
+AGENT_KEY = "role"
 
 
-def build_schema_prompt(error_log: dict) -> str:
-    """Verbatim vendored ``create_prompt`` (modulo the ``ground_truth`` key)."""
-    chat_history = error_log.get("history", [])
-    question = error_log.get("question", "")
-    ground_truth = error_log.get("ground_truth", "")
-    mistake_agent = error_log.get("mistake_agent", "")
-    mistake_step = error_log.get("mistake_step", "")
-    mistake_reason = error_log.get("mistake_reason", "")
+def load_schemagen_records(directory: str) -> list[dict]:
+    """``load_records`` plus ``mistake_reason`` (the one field it drops).
 
+    Same file walk and skips as the detection loader, so the schemagen id-set
+    always equals the predict id-set.
+    """
+    records = load_records(directory)
+    for r in records:
+        data = _load_json_data(Path(directory) / r["filename"]) or {}
+        r["mistake_reason"] = data.get("mistake_reason", "")
+    return records
+
+
+def build_schemagen_prompt(record: dict) -> str:
+    """Verbatim ``error_schema_generator_cloud.py::create_prompt`` (agent key
+    fixed to ``role``)."""
+    chat_history = record["history"]
+    question = record["question"]
+    ground_truth = record["ground_truth"]
+    mistake_agent = record["gold_agent"]
+    mistake_step = record["gold_step"]
+    mistake_reason = record["mistake_reason"]
+
+    # Format chat history with step numbers
     chat_content = "\n".join([
-        f"{entry.get('role', 'Unknown')}: {entry.get('content', '')}"
-        for entry in chat_history
+        f"Step {idx}: {entry.get(AGENT_KEY, 'Unknown')}: {entry.get('content', '')}"
+        for idx, entry in enumerate(chat_history)
     ])
 
-    return f"""Given an error analysis from a multi-agent conversation, create a error schema to help identify similar errors in the future.
+    # Create focused prompt for error identification
+    prompt_text = f"""Given an error analysis from a multi-agent conversation, create a error schema to help identify similar errors in the future.
 
 Context:
 Question: {question}
@@ -85,23 +110,50 @@ Based on this error case, please create a error schema that will help IDENTIFY s
    - What key phrases or conversation patterns serve as reliable indicators?
 
 Please format your response as a structured schema that focuses specifically on ERROR IDENTIFICATION, not on how to improve agent behavior.
+
+Provide a concise, actionable schema in the following format:
+
+Agent Name: {mistake_agent}
+Step Number: {mistake_step}
+Reason for Mistake: [Your analysis of why this specific error occurred and how to identify similar patterns]
 """
 
+    return prompt_text
 
-def _bool(x: str) -> bool:
-    return str(x).strip().lower() in {"1", "true", "yes", "y", "t"}
+
+def schemagen_messages(record: dict) -> list[dict]:
+    # The vendored generator sends the prompt unscrubbed (generate_schema_gpt).
+    return [
+        {"role": "system", "content": SCHEMAGEN_SYSTEM},
+        {"role": "user", "content": build_schemagen_prompt(record)},
+    ]
+
+
+def schemagen_program(record: dict) -> Program:
+    raw = (yield [schemagen_messages(record)])[0]
+    return {
+        "predicted_agent": None,
+        "predicted_step": None,
+        "raw": raw,
+        "schema": strip_think(raw).strip(),
+        "calls": [{"response": raw}],
+    }
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate CORRECT error schemata with VLLM.")
-    p.add_argument("--model", required=True, help="HF model name or local path.")
-    p.add_argument("--tokenizer", default=None,
-                   help="Optional tokenizer path override (e.g. a corrected tokenizer dir).")
+    p = argparse.ArgumentParser(description="Distill CORRECT error schemata, one per trajectory.")
+    p.add_argument("--model", required=True,
+                   help="Local checkpoint path (vllm) or API model name (openai).")
+    p.add_argument("--model-name", default=None,
+                   help="Short label recorded in outputs (default: --model).")
     p.add_argument("--input", required=True, help="Subset directory of trajectory JSONs.")
-    p.add_argument("--output", required=True, help="Output directory for error_schemata.txt.")
+    p.add_argument("--output", required=True,
+                   help="Model-level output directory; files land in {output}/schemagen/.")
+    p.add_argument("--backend", default="vllm", choices=["vllm", "openai", "dummy"])
+    # vLLM-only knobs (defaults = the vendored schema generator's SamplingParams).
+    p.add_argument("--tokenizer", default=None)
     p.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16", "float16", "auto"])
     p.add_argument("--seed", type=int, default=0)
-    # Vendored schema-gen sampling: temperature=0.7, top_p=0.95, max_tokens=1024.
     p.add_argument("--temperature", type=float, default=0.7)
     p.add_argument("--top_p", type=float, default=0.95)
     p.add_argument("--gen_max_tokens", type=int, default=1024)
@@ -110,80 +162,82 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--truncate_prompt_tokens", type=int, default=None)
     p.add_argument("--gpu_memory_utilization", type=float, default=0.90)
     p.add_argument("--tensor_parallel_size", type=int, default=1)
-    p.add_argument("--overwrite", action="store_true")
+    # API-only knobs
+    p.add_argument("--api-base-url", default=None)
+    p.add_argument("--api-key-env", default="OPENAI_API_KEY")
+    p.add_argument("--api-header", action="append", default=[], metavar="KEY=VALUE")
+    p.add_argument("--api-concurrency", type=int, default=8)
+    p.add_argument("--api-max-retries", type=int, default=6)
+    p.add_argument("--api-param", action="append", default=[], metavar="KEY=VALUE",
+                   help="Request parameter sent verbatim (repeatable). These are the "
+                        "ONLY generation params an API model receives.")
+    p.add_argument("--start_idx", type=int, default=0)
+    p.add_argument("--end_idx", type=int, default=None)
+    p.add_argument("--overwrite", action="store_true",
+                   help="Clear {output}/schemagen/ and redo every trajectory.")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    model_name = args.model_name or args.model
 
-    out_dir = Path(args.output)
-    out_path = out_dir / "error_schemata.txt"
-    if out_path.exists() and not args.overwrite:
-        print(f"skip (exists): {out_path}")
+    writer = OutputWriter(Path(args.output) / "schemagen", overwrite=args.overwrite)
+    done = writer.done_ids()
+
+    records = load_schemagen_records(args.input)
+    end_idx = args.end_idx if args.end_idx is not None else len(records)
+    records = records[args.start_idx:end_idx]
+    remaining = [r for r in records if r["id"] not in done]
+    print(f"  {len(records)} trajectories [{args.start_idx}:{end_idx}] from {args.input}"
+          f" — {len(done)} done, {len(remaining)} to run")
+    if not remaining:
+        print(f"  skip (complete): {writer.dir}")
         return
 
-    # Numeric filename sort — same ordering the vendored generator and the
-    # similarity stage use, so schema #n always describes trajectory n.json.
-    file_nums, error_logs = [], []
-    for fn in _get_sorted_json_files(args.input):
-        data = _load_json_data(Path(args.input) / fn)
-        if not data or "history" not in data:
-            print(f"  skipping {fn}: unexpected format")
-            continue
-        file_nums.append(int(Path(fn).stem))
-        error_logs.append(data)
-    print(f"  {len(error_logs)} trajectories from {args.input}")
-    if not error_logs:
-        print("  nothing to do")
-        return
+    backend = build_backend(args)
+    writer.write_run_config({
+        "model": model_name,
+        "model_arg": args.model,
+        "method": "schemagen",
+        "subset": Path(args.input).name,
+        "backend": args.backend,
+        "request_params": backend.request_params,
+        "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "n_total": len(records),
+        "n_already_done": len(done),
+        "n_remaining": len(remaining),
+        "resumed": bool(done),
+    })
 
-    engine = PromptEngine(
-        args.model,
-        tokenizer=args.tokenizer,
-        dtype=args.dtype,
-        seed=args.seed,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        max_gen_tokens=args.gen_max_tokens,
-        enable_thinking=args.enable_thinking,
-        tensor_parallel_size=args.tensor_parallel_size,
-        gpu_memory_utilization=args.gpu_memory_utilization,
-        max_model_len=args.max_model_len,
-        truncate_prompt_tokens=args.truncate_prompt_tokens,
-    )
+    def on_done(record: dict, pred: dict) -> None:
+        writer.write(record["id"], {
+            "id": record["id"],
+            "filename": record["filename"],
+            "question_id": record["question_id"],
+            "method": "schemagen",
+            "model": model_name,
+            "backend": args.backend,
+            "predicted_agent": None,
+            "predicted_step": None,
+            "gold_agent": record["gold_agent"],
+            "gold_step": record["gold_step"],
+            "raw": pred["raw"],
+            "schema": pred["schema"],
+            "calls": pred["calls"],
+        })
 
-    message_lists = [
-        [{"role": "system", "content": SYSTEM_PROMPT},
-         {"role": "user", "content": build_schema_prompt(log)}]
-        for log in error_logs
-    ]
+    programs = [(r, schemagen_program(r)) for r in remaining]
 
     t0 = time.perf_counter()
-    outputs = engine.generate(message_lists)
+    if backend.prefers_streaming:
+        run_streaming(programs, backend, on_done, max_workers=args.api_concurrency)
+    else:
+        run_batched(programs, backend, on_done)
     elapsed = time.perf_counter() - t0
 
-    # strip_think: a schema with an embedded reasoning trace would pollute every
-    # future retrieval prompt that cites it.
-    schemata = {num: strip_think(raw) for num, raw in zip(file_nums, outputs)}
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    write_schemata_file(schemata, out_path)
-
-    config = {
-        "model": args.model,
-        "subset": Path(args.input).name,
-        "dtype": args.dtype,
-        "seed": args.seed,
-        "temperature": args.temperature,
-        "top_p": args.top_p,
-        "gen_max_tokens": args.gen_max_tokens,
-        "enable_thinking": args.enable_thinking,
-        "n_trajectories": len(error_logs),
-    }
-    (out_dir / "config.json").write_text(json.dumps(config, indent=2))
-
-    print(f"  wrote {out_path}  ({len(schemata)} schemata, {elapsed:.1f}s)")
+    n_written = len(writer.done_ids())
+    print(f"  wrote {writer.dir}  ({n_written}/{len(records)} files, {elapsed:.1f}s)")
 
 
 if __name__ == "__main__":

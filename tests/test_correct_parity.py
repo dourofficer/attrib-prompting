@@ -226,6 +226,91 @@ def test_parse_reuses_prompting(vendored):
     assert r"Step Number:\s*(\d+)" in evaluate_src
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1: schema-generation prompt parity (error_schema_generator_cloud.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def vendored_schemagen():
+    _stub("tqdm", tqdm=lambda it, **kw: it)
+    _stub("openai", OpenAI=object)
+    _stub("google")
+    _stub("google.generativeai")
+    spec = importlib.util.spec_from_file_location(
+        "vendored_schemagen_cloud",
+        REPO_ROOT / "vendored/CORRECT/src/error_schema_generator_cloud.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _schemagen_record(tmp_path, doc):
+    from baselines.correct.schemagen import load_schemagen_records
+
+    (tmp_path / "1.json").write_text(json.dumps(doc), encoding="utf-8")
+    return load_schemagen_records(str(tmp_path))[0]
+
+
+WW_DOC = {
+    "history": HISTORIES["1"],
+    "question": "What is twice the “population” of the city?",
+    "ground_truth": "16,672,000",
+    "question_ID": "qid-1",
+    "mistake_agent": "WebSurfer",
+    "mistake_step": "1",
+    "mistake_reason": "mis-read the page",
+}
+
+
+def test_schemagen_prompt_parity(vendored_schemagen, tmp_path):
+    from baselines.correct.schemagen import schemagen_messages
+
+    client = FakeClient(response="### Error Schema ...")
+    for name, doc in {
+        "ww": WW_DOC,
+        # CE-shaped: both ground-truth spellings present and equal (as released
+        # upstream — empty; and as restored in data/correct-error-gt — equal).
+        "ce": {**WW_DOC, "ground_truth": "", "groundtruth": "", "mistake_step": 1},
+        "ce-gt": {**WW_DOC, "ground_truth": "B", "groundtruth": "B"},
+    }.items():
+        d = tmp_path / name
+        d.mkdir()
+        record = _schemagen_record(d, doc)
+        vendored_schemagen.generate_schema_gpt(doc, client, "gpt-4o", 1024)
+        assert client.captured[-1]["messages"] == schemagen_messages(record), name
+        assert client.captured[-1]["max_tokens"] == 1024
+        assert "temperature" not in client.captured[-1]  # commented out upstream
+
+
+def test_schemagen_gpt5_params(vendored_schemagen):
+    client = FakeClient(response="x")
+    vendored_schemagen.generate_schema_gpt(WW_DOC, client, "gpt-5", 4096)
+    assert client.captured[-1]["max_completion_tokens"] == 4096
+    assert "max_tokens" not in client.captured[-1]
+    assert "temperature" not in client.captured[-1]
+
+
+def test_schemagen_role_key_deviation(vendored_schemagen, tmp_path):
+    """On this repo's algorithm-generated layout (``role`` = agent name,
+    ``name`` = user/assistant) the vendored autodetect would pick ``name`` and
+    label turns user/assistant. We fix ``role``, which equals what the vendored
+    code produces on the *original* Who&When layout — pinned by comparing
+    against a name-stripped copy."""
+    from baselines.correct.schemagen import build_schemagen_prompt
+
+    doc = {**WW_DOC,
+           "history": [{"role": "Excel_Expert", "name": "assistant", "content": "sum it"},
+                       {"role": "user", "name": "user", "content": "thanks"}]}
+    d = tmp_path / "alggen"
+    d.mkdir()
+    record = _schemagen_record(d, doc)
+    stripped = {**doc, "history": [{k: v for k, v in e.items() if k != "name"}
+                                   for e in doc["history"]]}
+    assert build_schemagen_prompt(record) == vendored_schemagen.create_prompt(stripped)
+    assert build_schemagen_prompt(record) != vendored_schemagen.create_prompt(doc)
+    assert "Step 0: Excel_Expert: sum it" in build_schemagen_prompt(record)
+
+
 def test_clean_text_pins(vendored):
     from baselines.correct.methods import _clean_unicode_content, clean_text
 
