@@ -63,21 +63,26 @@ DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash s
 Examples:
 
 ```bash
-DATASET=ww GPU=0 bash scripts/correct/run.sh                       # everything, local models
+DATASET=ww bash scripts/correct/run.sh                             # everything in the config
 DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct/run.sh
 DATASET=correct-error STAGES=schemagen MODEL=gpt-5 bash scripts/correct/run.sh   # schemata only
-DATASET=ww MODEL=qwen3.5-9b END_IDX=10 DRY_RUN=1 bash scripts/correct/run.sh    # preview
+DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/correct/run.sh        # preview
 ```
 
 Same env knobs as the prompting scripts (`GT`, `GPU`, `START_IDX`/`END_IDX`,
-`DRY_RUN`, `OVERWRITE`, `EXTRA_SET`, `CONFIG`; same config resolution against
-`baselines/correct/configs/`), plus:
+`DRY_RUN`, `OVERWRITE`, `EXTRA_SET`, `CONFIG`), plus:
 
 | var | meaning |
 |---|---|
 | `MODEL` | optional here — omit to run every model in the config |
 | `METHOD` | `correct` (schema-guided) or `correct_baseline` (k=0) — omit for both |
 | `STAGES` | comma-list of `schemagen,similarity,predict` (default: all) |
+
+Config resolution is the same shape as prompting's, but only the closed-source
+configs ship: `baselines/correct/configs/<DATASET>-api.yaml` (`gpt-4o`,
+`gpt-5`). Add `<DATASET>.yaml` for local vLLM models and the script picks it up
+— [`baselines/correct/configs/README.md`](../baselines/correct/configs/README.md)
+has the template.
 
 Two CORRECT-specific notes: the default GT setting is **`without`** (the
 vendored cloud path never puts the answer in the detection prompt — the paper

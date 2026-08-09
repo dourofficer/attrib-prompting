@@ -56,9 +56,13 @@ The CORRECT baseline (3-stage pipeline: schema generation → similarity →
 schema-guided detection; see [`baselines/correct/README.md`](baselines/correct/README.md)):
 
 ```bash
-DATASET=ww GPU=0 bash scripts/correct/run.sh                  # full pipeline, local models
+DATASET=ww bash scripts/correct/run.sh                        # full pipeline, all config models
 DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct/run.sh
 ```
+
+Its `configs/` ships the closed-source configs only (`gpt-4o`, `gpt-5`);
+[`baselines/correct/configs/README.md`](baselines/correct/configs/README.md)
+documents the keys and templates a local-vLLM config.
 
 Or the full grid per dataset:
 

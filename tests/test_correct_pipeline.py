@@ -194,8 +194,7 @@ def test_predict_method_dir_override(tmp_path):
 # sweep
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIGS = ["ww", "ww-api", "correct-error", "correct-error-api",
-           "traceelephant", "traceelephant-api"]
+CONFIGS = ["ww-api", "correct-error-api", "traceelephant-api"]
 
 
 @pytest.mark.parametrize("name", CONFIGS)
@@ -217,7 +216,7 @@ def test_sweep_e2e_dummy(tmp_path):
     _write_sims(outputs / "data" / "_similarities" / "bge-m3.json",
                 {"1": [2, 3], "2": [1, 3], "3": [1, 2]})
     argv = [
-        "--config", "baselines/correct/configs/ww.yaml",
+        "--config", "baselines/correct/configs/ww-api.yaml",
         "--gt", "with",  # tmp roots can't be mapped by nogt_root
         "--set", f"data_dir={tmp_path}",
         "--set", "subsets=[data]",

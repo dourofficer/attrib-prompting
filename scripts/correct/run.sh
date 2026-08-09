@@ -21,16 +21,22 @@ usage() {
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-# Config resolution: the API config if it declares MODEL in model_specs,
-# otherwise the local-vLLM config for the dataset.
+# Config resolution: whichever of <ds>.yaml (local vLLM) / <ds>-api.yaml
+# (closed-source) declares MODEL in model_specs; otherwise the local config if
+# it exists, else the API one. Only the API configs ship — see
+# baselines/correct/configs/README.md to add local models.
 CFG_DIR="baselines/correct/configs"
+LOCAL_CFG="${CFG_DIR}/${DATASET}.yaml"
+API_CFG="${CFG_DIR}/${DATASET}-api.yaml"
 CONFIG="${CONFIG:-}"
+if [[ -z "$CONFIG" && -n "${MODEL:-}" ]]; then
+  for c in "$LOCAL_CFG" "$API_CFG"; do
+    [[ -f "$c" ]] && grep -qE "^  ${MODEL}:" "$c" && { CONFIG="$c"; break; }
+  done
+fi
 if [[ -z "$CONFIG" ]]; then
-  if [[ -n "${MODEL:-}" && -f "${CFG_DIR}/${DATASET}-api.yaml" ]] \
-     && grep -qE "^  ${MODEL}:" "${CFG_DIR}/${DATASET}-api.yaml"; then
-    CONFIG="${CFG_DIR}/${DATASET}-api.yaml"
-  elif [[ -f "${CFG_DIR}/${DATASET}.yaml" ]]; then
-    CONFIG="${CFG_DIR}/${DATASET}.yaml"
+  if   [[ -f "$LOCAL_CFG" ]]; then CONFIG="$LOCAL_CFG"
+  elif [[ -f "$API_CFG"   ]]; then CONFIG="$API_CFG"
   else
     echo "error: no config for DATASET='${DATASET}' (${CFG_DIR}/${DATASET}[-api].yaml)" >&2
     exit 1
