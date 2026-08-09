@@ -24,8 +24,8 @@ python -m baselines.correct.predict \
     --input data/ww/hand-crafted \
     --output outputs-nogt/ww/hand-crafted/qwen3.5-9b \
     --method correct --num-schemata 10 --schema-model qwen3.5-9b \
-    --schemata-dir outputs/ww/hand-crafted/qwen3.5-9b/schemagen \
-    --similarities outputs/ww/hand-crafted/_similarities/bge-m3.json
+    --schemata-dir artifacts/ww/hand-crafted/schemagen/qwen3.5-9b \
+    --similarities artifacts/ww/hand-crafted/similarities/bge-m3.json
 """
 from __future__ import annotations
 
@@ -61,9 +61,10 @@ def parse_args() -> argparse.Namespace:
                         "paper) never includes the answer.")
     # Retrieval artifacts (required for --method correct)
     p.add_argument("--schemata-dir", default=None,
-                   help="Stage-1 output dir: .../<schema_model>/schemagen")
+                   help="Stage-1 schemata: artifacts/<ds>/<subset>/schemagen/<schema_model>")
     p.add_argument("--similarities", default=None,
-                   help="Stage-2 ranked-neighbour JSON: .../_similarities/bge-m3.json")
+                   help="Stage-2 ranked-neighbour JSON: "
+                        "artifacts/<ds>/<subset>/similarities/bge-m3.json")
     p.add_argument("--num-schemata", type=int, default=1,
                    help="Top-k retrieved schemata (vendored default 1; paper: "
                         "alg-generated 1, hand-crafted 10, correct-error 5).")
@@ -103,12 +104,12 @@ def _build_analyzer(args: argparse.Namespace) -> SchemaAnalyzer:
         missing.append(
             f"schemata dir {args.schemata_dir!r} — generate with:\n"
             f"    python -m baselines.correct.schemagen --input {args.input} "
-            f"--output <...>/<schema_model> [--model ...]")
+            f"--output artifacts/<ds>/<subset>/schemagen/<schema_model> [--model ...]")
     if not args.similarities or not Path(args.similarities).is_file():
         missing.append(
             f"similarities file {args.similarities!r} — generate with:\n"
             f"    python -m baselines.correct.similarity --input {args.input} "
-            f"--output <...>/_similarities/bge-m3.json")
+            f"--output artifacts/<ds>/<subset>/similarities/bge-m3.json")
     if missing:
         raise SystemExit("--method correct needs precomputed artifacts; missing:\n"
                          + "\n".join(missing)

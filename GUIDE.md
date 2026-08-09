@@ -31,6 +31,13 @@ outputs/<dataset>/<subset>/<model>/<method>/<id>.json    # method = all_at_once,
 outputs/<dataset>/<subset>/<model>/<method>/_run.json    # run snapshot
 ```
 
+`outputs/` holds **predictions only**. A baseline with offline stages puts what
+those stages precompute in the sibling **`artifacts/`** root instead — stage
+first, then the model that produced it, e.g.
+`artifacts/<dataset>/<subset>/schemagen/<schema_model>/<id>.json`. These are
+GT-independent, so `artifacts/` has no `-nogt` mirror; map roots with
+`baselines.shared.common.artifacts_root`.
+
 Required keys per file (extra method-specific keys are fine):
 
 ```json
@@ -104,7 +111,8 @@ Per baseline, mirroring `baselines/prompting/configs/`:
 - `configs/<ds>.yaml` — local vLLM models; `configs/<ds>-api.yaml` —
   closed-source APIs. Never mix the two.
 - Shared keys: `models`, `subsets`, `data_dir`, `outputs_root`
-  (= `outputs/<ds>`), `start_idx`/`end_idx`, `overwrite`, and `model_specs` —
+  (= `outputs/<ds>`), optional `artifacts_root` (= `artifacts/<ds>`, only for
+  baselines with offline stages), `start_idx`/`end_idx`, `overwrite`, and `model_specs` —
   one spec per model declaring `backend` plus backend-specific fields
   (`model_path`/`tokenizer`/sampling overrides for vllm; `model`/`base_url`/
   `api_key_env`/`params` for openai, with `params` sent to the API verbatim).

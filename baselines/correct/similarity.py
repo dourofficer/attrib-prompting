@@ -11,9 +11,10 @@ are visited in the vendored ``sorted(os.listdir())`` order, so exact-tie
 ordering matches too (Python's sort is stable).
 
 The output JSON is the vendored format — ``{"<id>": [id, id, ...]}``, no scores
-— plus a ``*.meta.json`` sidecar recording how it was computed. The artifact is
-model-independent (one per subset) and committed to git so API-only users can
-run detection without torch.
+— plus a ``*.meta.json`` sidecar recording how it was computed. Only the corpus
+and the encoder feed it: there is one artifact per (subset, embedder), named
+after the embedder, and it is independent of the detector and of the schema
+model. It is committed to git so API-only users can run detection without torch.
 
 The embedder is a similarity encoder, not a generator, so it stays on HF
 transformers exactly as vendored (vLLM is for generation). All torch imports
@@ -23,7 +24,7 @@ Usage
 -----
 python -m baselines.correct.similarity \
     --input  data/ww/hand-crafted \
-    --output outputs/ww/hand-crafted/_similarities/bge-m3.json \
+    --output artifacts/ww/hand-crafted/similarities/bge-m3.json \
     --model  ../hub/BAAI/bge-m3
 """
 from __future__ import annotations
@@ -158,7 +159,8 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Generate CORRECT trajectory-similarity mappings.")
     p.add_argument("--input", required=True, help="Subset directory of trajectory JSONs.")
     p.add_argument("--output", required=True,
-                   help="Output JSON path, e.g. outputs/<ds>/<subset>/_similarities/bge-m3.json.")
+                   help="Output JSON path, e.g. "
+                        "artifacts/<ds>/<subset>/similarities/bge-m3.json.")
     p.add_argument("--model", default="BAAI/bge-m3",
                    help="Embedding model (HF name or local path).")
     p.add_argument("--batch_size", type=int, default=8)

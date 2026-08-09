@@ -11,6 +11,17 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_artifacts_root_mapping():
+    """Both GT trees map to one artifacts root — the artifacts are GT-independent."""
+    from baselines.shared.common import artifacts_root
+
+    assert artifacts_root("outputs/ww") == "artifacts/ww"
+    assert artifacts_root("outputs-nogt/ww") == "artifacts/ww"
+    assert artifacts_root("outputs") == "artifacts"
+    with pytest.raises(ValueError, match="artifacts_root"):
+        artifacts_root("/tmp/custom/root")
+
+
 def toy_data_dir(tmp_path: Path, n: int = 3) -> Path:
     d = tmp_path / "data"
     d.mkdir(exist_ok=True)
@@ -36,6 +47,11 @@ def run_module(module: str, *args: str, check: bool = True) -> subprocess.Comple
     return subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=check)
 
 
+def _schemata_dir(tmp_path: Path) -> Path:
+    """Stage-1 artifact dir, in the shipped layout: <artifacts>/schemagen/<model>."""
+    return tmp_path / "art" / "schemagen" / "dummy"
+
+
 def _schemagen(data_dir: Path, out_dir: Path, *extra: str) -> str:
     res = run_module(
         "baselines.correct.schemagen",
@@ -47,11 +63,11 @@ def _schemagen(data_dir: Path, out_dir: Path, *extra: str) -> str:
 
 def test_schemagen_e2e_and_resume(tmp_path):
     data = toy_data_dir(tmp_path)
-    out = tmp_path / "out" / "dummy"
+    sdir = _schemata_dir(tmp_path)
 
-    out1 = _schemagen(data, out)
+    out1 = _schemagen(data, sdir)
     assert "3 to run" in out1
-    sdir = out / "schemagen"
+    # --output IS the directory the files land in (no extra hop).
     files = sorted(p.name for p in sdir.glob("[0-9]*.json"))
     assert files == ["1.json", "2.json", "3.json"]
 
@@ -72,24 +88,24 @@ def test_schemagen_e2e_and_resume(tmp_path):
     # Resume: delete one file, only it re-runs.
     (sdir / "2.json").unlink()
     mtime_1 = (sdir / "1.json").stat().st_mtime_ns
-    out2 = _schemagen(data, out)
+    out2 = _schemagen(data, sdir)
     assert "2 done, 1 to run" in out2
     assert (sdir / "2.json").exists()
     assert (sdir / "1.json").stat().st_mtime_ns == mtime_1
 
-    out3 = _schemagen(data, out)
+    out3 = _schemagen(data, sdir)
     assert "skip (complete)" in out3
 
     # --overwrite clears and redoes everything.
-    out4 = _schemagen(data, out, "--overwrite")
+    out4 = _schemagen(data, sdir, "--overwrite")
     assert "3 to run" in out4
 
 
 def test_schemagen_slice(tmp_path):
     data = toy_data_dir(tmp_path)
-    out = tmp_path / "out" / "dummy"
-    _schemagen(data, out, "--start_idx", "0", "--end_idx", "2")
-    files = sorted(p.name for p in (out / "schemagen").glob("[0-9]*.json"))
+    sdir = _schemata_dir(tmp_path)
+    _schemagen(data, sdir, "--start_idx", "0", "--end_idx", "2")
+    files = sorted(p.name for p in sdir.glob("[0-9]*.json"))
     assert files == ["1.json", "2.json"]
 
 
@@ -116,11 +132,12 @@ def _predict(data_dir: Path, out_dir: Path, method: str, *extra: str,
 def test_predict_correct_e2e_and_resume(tmp_path):
     data = toy_data_dir(tmp_path)
     out = tmp_path / "out" / "dummy"
-    _schemagen(data, out)
-    sims = _write_sims(tmp_path / "out" / "_similarities" / "bge-m3.json",
+    sdir = _schemata_dir(tmp_path)
+    _schemagen(data, sdir)
+    sims = _write_sims(tmp_path / "art" / "similarities" / "bge-m3.json",
                        {"1": [2, 3], "2": [1, 3], "3": [1, 2]})
 
-    artifact_args = ("--schemata-dir", str(out / "schemagen"),
+    artifact_args = ("--schemata-dir", str(sdir),
                      "--similarities", str(sims),
                      "--num-schemata", "2", "--schema-model", "dummy")
     res = _predict(data, out, "correct", *artifact_args)
@@ -181,11 +198,12 @@ def test_predict_correct_missing_artifacts_exits(tmp_path):
 def test_predict_method_dir_override(tmp_path):
     data = toy_data_dir(tmp_path)
     out = tmp_path / "out" / "dummy"
-    _schemagen(data, out)
-    sims = _write_sims(tmp_path / "out" / "_similarities" / "bge-m3.json",
+    sdir = _schemata_dir(tmp_path)
+    _schemagen(data, sdir)
+    sims = _write_sims(tmp_path / "art" / "similarities" / "bge-m3.json",
                        {"1": [2], "2": [1], "3": [1]})
     _predict(data, out, "correct", "--method-dir", "correct.k1",
-             "--schemata-dir", str(out / "schemagen"), "--similarities", str(sims))
+             "--schemata-dir", str(sdir), "--similarities", str(sims))
     assert (out / "correct.k1" / "1.json").exists()
     assert not (out / "correct").exists()
 
@@ -205,15 +223,17 @@ def test_sweep_dry_run(name):
     assert "baselines.correct.schemagen" in out
     assert "baselines.correct.similarity" in out
     assert "baselines.correct.predict" in out
-    # Default GT setting is 'without': detection mirrors into outputs-nogt/,
-    # stage-1/2 artifacts stay under outputs/.
+    # Default GT setting is 'without': detection mirrors into outputs-nogt/.
     assert "outputs-nogt/" in out and "--gt without" in out.replace("\\\n    ", " ")
+    # Stage-1/2 artifacts live in artifacts/, never in an output tree.
+    assert "artifacts/" in out and "_similarities" not in out
 
 
 def test_sweep_e2e_dummy(tmp_path):
     data = toy_data_dir(tmp_path)  # subset dir name: "data"
     outputs = tmp_path / "outputs"
-    _write_sims(outputs / "data" / "_similarities" / "bge-m3.json",
+    artifacts = tmp_path / "artifacts"
+    _write_sims(artifacts / "data" / "similarities" / "bge-m3.json",
                 {"1": [2, 3], "2": [1, 3], "3": [1, 2]})
     argv = [
         "--config", "baselines/correct/configs/ww-api.yaml",
@@ -223,6 +243,7 @@ def test_sweep_e2e_dummy(tmp_path):
         # Explicit: the shipped config runs whichever methods the user needs.
         "--set", "methods=[correct, correct_baseline]",
         "--set", f"outputs_root={outputs}",
+        "--set", f"artifacts_root={artifacts}",
         "--set", "models=[dummy]",
         "--set", "schema_model=dummy",
         "--set", "model_specs={dummy: {backend: dummy}}",
@@ -230,11 +251,14 @@ def test_sweep_e2e_dummy(tmp_path):
         "--set", "embed_model=bge-m3",
     ]
     res = run_module("baselines.correct.sweep", *argv)
-    sdir = outputs / "data" / "dummy" / "schemagen"
+    sdir = artifacts / "data" / "schemagen" / "dummy"
     assert len(list(sdir.glob("[0-9]*.json"))) == 3
     for method in ("correct", "correct_baseline"):
         mdir = outputs / "data" / "dummy" / method
         assert len(list(mdir.glob("[0-9]*.json"))) == 3, method
+    # The point of the artifacts/ split: a model dir holds method dirs only.
+    assert {p.name for p in (outputs / "data" / "dummy").iterdir()} == \
+        {"correct", "correct_baseline"}
     doc = json.loads((outputs / "data" / "dummy" / "correct" / "1.json").read_text())
     assert doc["gt_in_prompt"] is True and doc["schema_cases"] == [2, 3]
 

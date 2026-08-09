@@ -22,8 +22,10 @@ subsets: [algorithm-generated, hand-crafted]
 methods: [correct, correct_baseline]      # schema-guided / k=0 baseline
 
 data_dir:     data/ww           # corpus
-outputs_root: outputs/ww        # stage-1/2 artifacts + with-GT detection;
-                                # without-GT detection mirrors to outputs-nogt/ww
+outputs_root: outputs/ww        # predictions (with-GT; without-GT mirrors to
+                                # outputs-nogt/ww)
+artifacts_root: artifacts/ww    # stage-1/2 artifacts, GT-independent (default:
+                                # outputs_root with its root swapped to artifacts/)
 gt: without                     # this baseline's default = the paper setting
 
 schema_model: gpt-4o            # stage 1: who distills the schemata
@@ -77,8 +79,9 @@ models:  [qwen3.5-9b, deepseek-8b]
 subsets: [algorithm-generated, hand-crafted]
 methods: [correct, correct_baseline]
 
-data_dir:     data/ww
-outputs_root: outputs/ww
+data_dir:       data/ww
+outputs_root:   outputs/ww
+artifacts_root: artifacts/ww
 gt: without
 
 schema_model: qwen3.5-9b            # or gpt-4o, to reuse schemata already generated
@@ -125,10 +128,11 @@ A vLLM spec may override any top-level sampling/runtime knob (as `deepseek-8b`
 does); anything unset falls back to the top-level value.
 
 **Schemata are shared across configs.** Stage 1 is keyed by `schema_model`, not
-by the detector, so a local detector can consume GPT-4o schemata: keep
-`schema_model: gpt-4o` in the local config and the sweep skips stage 1 as
-already complete (`STAGES=predict` forces it). That is the paper's design — one
-strong generator, many detectors.
+by the detector, and lands in `artifacts/`, not in any output tree — so a local
+detector can consume GPT-4o schemata: keep `schema_model: gpt-4o` and the same
+`artifacts_root` in the local config, and the sweep skips stage 1 as already
+complete. Same for the similarities, which depend only on `embed_model`. That
+is the paper's design — one strong generator, many detectors.
 
 ## Report configs
 

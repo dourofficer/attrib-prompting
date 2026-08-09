@@ -17,7 +17,7 @@ Deliberate deviations (see README):
     ``name`` = user/assistant), so ``role`` reproduces what the vendored code
     yields on the original data;
   * schemata are stored as per-trajectory JSONs keyed by trajectory id
-    (``{output}/schemagen/<id>.json``, resume for free) instead of one
+    (``{output}/<id>.json``, resume for free) instead of one
     ``error_schemata.txt`` with fragile 1-based enumeration;
   * the ``schema`` field is ``strip_think``'d so local reasoning models work;
     the decisive ``raw`` is stored untouched.
@@ -27,10 +27,11 @@ Usage
 python -m baselines.correct.schemagen \
     --model ../hub/Qwen/Qwen3.5-9B --model-name qwen3.5-9b \
     --input data/ww/hand-crafted \
-    --output outputs/ww/hand-crafted/qwen3.5-9b
+    --output artifacts/ww/hand-crafted/schemagen/qwen3.5-9b
 
-Output: {output}/schemagen/<id>.json  (+ _run.json snapshot). File existence is
-the resume ledger; ``--overwrite`` clears the directory.
+Output: {output}/<id>.json (+ _run.json snapshot) — a stage artifact, not a
+prediction, hence ``artifacts/`` rather than ``outputs/``. File existence is the
+resume ledger; ``--overwrite`` clears the directory.
 """
 from __future__ import annotations
 
@@ -148,7 +149,8 @@ def parse_args() -> argparse.Namespace:
                    help="Short label recorded in outputs (default: --model).")
     p.add_argument("--input", required=True, help="Subset directory of trajectory JSONs.")
     p.add_argument("--output", required=True,
-                   help="Model-level output directory; files land in {output}/schemagen/.")
+                   help="Directory receiving <id>.json (convention: "
+                        "artifacts/<ds>/<subset>/schemagen/<schema_model>).")
     p.add_argument("--backend", default="vllm", choices=["vllm", "openai", "dummy"])
     # vLLM-only knobs (defaults = the vendored schema generator's SamplingParams).
     p.add_argument("--tokenizer", default=None)
@@ -174,7 +176,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--start_idx", type=int, default=0)
     p.add_argument("--end_idx", type=int, default=None)
     p.add_argument("--overwrite", action="store_true",
-                   help="Clear {output}/schemagen/ and redo every trajectory.")
+                   help="Clear {output} and redo every trajectory.")
     return p.parse_args()
 
 
@@ -182,7 +184,7 @@ def main() -> None:
     args = parse_args()
     model_name = args.model_name or args.model
 
-    writer = OutputWriter(Path(args.output) / "schemagen", overwrite=args.overwrite)
+    writer = OutputWriter(Path(args.output), overwrite=args.overwrite)
     done = writer.done_ids()
 
     records = load_schemagen_records(args.input)

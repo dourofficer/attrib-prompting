@@ -87,8 +87,13 @@ has the template.
 Two CORRECT-specific notes: the default GT setting is **`without`** (the
 vendored cloud path never puts the answer in the detection prompt — the paper
 setting), so detection results land in `outputs-nogt/` unless `GT=with`; and
-stage-1/2 artifacts (`<subset>/<schema_model>/schemagen/`, `_similarities/`)
-are GT-independent and always live under `outputs/`.
+the stage-1/2 artifacts are GT-independent, so they live outside both output
+trees, in **`artifacts/`**:
+
+```
+artifacts/<ds>/<subset>/schemagen/<schema_model>/<id>.json
+artifacts/<ds>/<subset>/similarities/<embed_model>.json
+```
 
 ## I/O — what each operation reads and writes
 
@@ -98,6 +103,10 @@ Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
 | operation | reads | writes |
 |---|---|---|
 | `scripts/prompting/<method>.sh` | `baselines/prompting/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
+| `scripts/correct/run.sh` | `baselines/correct/configs/<DATASET>[-api].yaml` | nothing itself — execs the 3-stage sweep |
+| `… → baselines.correct.schemagen` | `data/<DATASET>/<SUBSET>/<id>.json` (incl. gold labels) | `artifacts/<DATASET>/<SUBSET>/schemagen/<SCHEMA_MODEL>/<id>.json` (+ `_run.json`) |
+| `… → baselines.correct.similarity` | `data/<DATASET>/<SUBSET>/<id>.json`; the BGE-M3 checkpoint | `artifacts/<DATASET>/<SUBSET>/similarities/<EMBED_MODEL>.json` (+ `.meta.json`) |
+| `… → baselines.correct.predict` | the corpus + **both** artifacts above; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (+ `_run.json`) |
 | `… → baselines.prompting.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing `<gt-root>/…/<id>.json` (resume ledger); `$OPENAI_API_KEY` for API models; `../hub/<checkpoint>` for vLLM | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (one per trajectory, atomic) and `…/<METHOD>/_run.json` (run snapshot) |
 | `baselines.prompting.report --config configs/report_<ds>.yaml [--gt without]` | `data/<ds>/<subset>/*.json` (split universe only); `<gt-root>/<ds>/<subset>/<model>/<method>/[0-9]*.json` | `<gt-root>/<ds>/reports/completion_status.tsv`, `…/reports/<model>/<subset>/comparison_by_seed.tsv`, `…/reports/summary_mean_over_seeds.tsv` |
 

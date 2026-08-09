@@ -75,3 +75,22 @@ def nogt_root(path: str) -> str:
         f"cannot derive the without-GT root for {path!r}: expected a path under "
         "'outputs/' (set the root explicitly if you use a custom layout)"
     )
+
+
+def artifacts_root(path: str) -> str:
+    """Map an output root to the sibling root for offline stage artifacts.
+
+    Convention: ``outputs/<...>`` (and its ``outputs-nogt/<...>`` mirror) →
+    ``artifacts/<...>``. ``outputs/`` holds predictions only; precomputed
+    inputs to a run — CORRECT's schemata and trajectory similarities — live in
+    ``artifacts/`` instead. Both GT settings map to the same artifacts root:
+    these artifacts are GT-independent, so there is no ``-nogt`` mirror.
+    """
+    path = str(path)
+    for prefix in ("outputs-nogt", "outputs"):
+        if path == prefix or path.startswith(prefix + "/"):
+            return "artifacts" + path[len(prefix):]
+    raise ValueError(
+        f"cannot derive the artifacts root for {path!r}: expected a path under "
+        "'outputs/' (set `artifacts_root` explicitly if you use a custom layout)"
+    )

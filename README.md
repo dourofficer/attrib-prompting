@@ -143,6 +143,8 @@ baselines/correct/             CORRECT baseline: schemagen → similarity → de
 baselines/chief/               further baseline, not yet adapted (see GUIDE.md)
 data/                          corpora   ·  vendored/  upstream code, verbatim
 outputs/, outputs-nogt/        committed results, with-GT and without-GT
+artifacts/                     committed inputs a run consumes, not results:
+                               CORRECT's schemata and trajectory similarities
 scripts/prompting/             front doors (one subdir per baseline family)
 misc/                          one-off corpus/format utilities
 tests/                         CPU-only, keyless (pytest)

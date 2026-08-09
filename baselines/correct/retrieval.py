@@ -9,7 +9,8 @@ appears (stage 2 excludes it from every ranking). The vendored random fallback
 is off by default upstream and not ported.
 
 Deviation (storage only): schemata are read from stage-1 per-trajectory JSONs
-(``.../schemagen/<id>.json``) keyed by trajectory id, instead of parsing an
+(``artifacts/<ds>/<subset>/schemagen/<schema_model>/<id>.json``) keyed by
+trajectory id, instead of parsing an
 ``error_schemata.txt`` whose 1-based enumeration must coincide with file
 numbering. The schema text itself is byte-identical.
 """

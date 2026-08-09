@@ -34,18 +34,30 @@ directly-invocable module):
 
 | stage | module | one unit of work | writes |
 |---|---|---|---|
-| 1. schemagen | `schemagen.py` | one LLM call per **annotated** trajectory: given its history, question, answer **and its gold mistake agent/step/reason**, write a reusable schema — error signatures, error context, detection heuristics | `outputs/<ds>/<subset>/<schema_model>/schemagen/<id>.json` |
-| 2. similarity | `similarity.py` | embed every trajectory (BGE-M3, question + role-labelled turns, mean-pooled, L2-normalised) and rank all others by cosine, self excluded | `outputs/<ds>/<subset>/_similarities/bge-m3.json` (+ `.meta.json`) |
+| 1. schemagen | `schemagen.py` | one LLM call per **annotated** trajectory: given its history, question, answer **and its gold mistake agent/step/reason**, write a reusable schema — error signatures, error context, detection heuristics | `artifacts/<ds>/<subset>/schemagen/<schema_model>/<id>.json` |
+| 2. similarity | `similarity.py` | embed every trajectory (BGE-M3, question + role-labelled turns, mean-pooled, L2-normalised) and rank all others by cosine, self excluded | `artifacts/<ds>/<subset>/similarities/bge-m3.json` (+ `.meta.json`) |
 | 3. detection | `predict.py` | one LLM call per trajectory: the vendored all-at-once prompt with the **top-k neighbours' schemata** spliced in as "THOUGHT TEMPLATES FOR GUIDANCE", answered as `Agent Name:` / `Step Number:` / `Reason for Mistake:` | `<gt-root>/<ds>/<subset>/<model>/<method>/<id>.json` |
 
 Detecting trajectory `7` therefore means: read `bge-m3.json["7"]` → take the
-first k ids → load whichever of those have a `schemagen/<id>.json` (fewer than
-k is fine, and silent) → inject their schema text → one call → parse.
+first k ids → load whichever of those have a schema (fewer than k is fine, and
+silent) → inject their schema text → one call → parse.
 
 Stages 1–2 are **offline and corpus-scoped**: they run once per (subset,
 `schema_model`) and every detector, GT setting and k reuses them. One
 `schema_model` per config distills the schemata and **all detectors share
 them** — the paper's design of one strong generator serving many detectors.
+
+That is why their output lives in **`artifacts/`**, a sibling of `outputs/`:
+`outputs/` holds predictions, one dir per detector; `artifacts/` holds the
+precomputed inputs a run consumes, stage first and then producing model. Note
+which model each stage is keyed by — the schemata by the **LLM** that wrote
+them, the similarities by the **embedder** alone (they are built from corpus
+text only, so they are identical whichever detector or schema model you use):
+
+```
+artifacts/<ds>/<subset>/schemagen/gpt-4o/1.json      # stage 1, LLM-dependent
+artifacts/<ds>/<subset>/similarities/bge-m3.json     # stage 2, embedder-dependent
+```
 
 Two things are worth being explicit about, because they look like leakage and
 are not quite:
@@ -87,8 +99,8 @@ offline artifacts:
 | 3. detection | **yes** | `--gt with` adds `The Answer for the problem is: ...` after the problem line, for the query trajectory only |
 
 So schema building is the same under both settings, and both read the same
-`schemagen/` and `_similarities/` files under `outputs/` — only detection
-outputs split across `outputs/` vs `outputs-nogt/`. (The retrieved schemata
+files under `artifacts/` — which is why that root has no `-nogt` mirror. Only
+detection outputs split across `outputs/` vs `outputs-nogt/`. (The retrieved schemata
 still carry their neighbours' gold agent/step in either setting; that is stage
 1's design, not the flag.)
 

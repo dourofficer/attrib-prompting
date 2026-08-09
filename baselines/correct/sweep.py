@@ -18,13 +18,20 @@ Config schema = the prompting sweep's (``model_specs`` etc.) plus:
   num_schemata: {hand-crafted: 10, algorithm-generated: 1}   # scalar or per-subset
   schema_gen:   {temperature: 0.7, ...}   # stage-1 sampling overlay; `params`
                                           # replaces the spec's params for stage 1
+  artifacts_root: artifacts/ww       # stage-1/2 artifacts (default: outputs_root
+                                     # with its root component swapped to artifacts/)
+
+``outputs_root`` holds predictions only. The offline stages write to
+``artifacts_root`` instead, stage first, then producing model::
+
+    artifacts/<ds>/<subset>/schemagen/<schema_model>/<id>.json
+    artifacts/<ds>/<subset>/similarities/<embed_model>.json
 
 GT axis (GUIDE.md "GT settings"): the vendored cloud path never includes the
 task answer, so this sweep defaults to ``--gt without`` — the paper setting —
 mirroring detection outputs into ``outputs-nogt/``. ``--gt with`` inserts the
 answer line and writes under ``outputs/``. Stage-1/2 artifacts are corpus-scoped
-and GT-independent: they always live under the config's ``outputs_root`` and are
-shared by both settings.
+and GT-independent: one ``artifacts/`` root serves both settings.
 
 --dry-run prints every stage's command unconditionally (no completeness checks),
 so it works on a clean checkout without models or artifacts.
@@ -34,7 +41,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from baselines.shared.common import nogt_root
+from baselines.shared.common import artifacts_root, nogt_root
 from baselines.prompting.sweep import load_cfg, model_args, run
 
 STAGES = ("schemagen", "similarity", "predict")
@@ -95,8 +102,10 @@ def main() -> None:
     gt = args.gt or cfg.get("gt", "without")
     if gt not in ("with", "without"):
         raise SystemExit(f"gt must be 'with' or 'without', got {gt!r}")
-    outputs_root = cfg["outputs_root"]  # stage-1/2 artifacts: GT-independent
+    outputs_root = cfg["outputs_root"]          # predictions
     detect_root = outputs_root if gt == "with" else nogt_root(outputs_root)
+    # Stage-1/2 artifacts live outside both GT trees (they are GT-independent).
+    art_root = cfg.get("artifacts_root") or artifacts_root(outputs_root)
 
     schema_model = cfg.get("schema_model")
     embed_model = cfg.get("embed_model", "BAAI/bge-m3")
@@ -104,8 +113,8 @@ def main() -> None:
 
     for subset in cfg["subsets"]:
         data_dir = f"{cfg['data_dir']}/{subset}"
-        schemagen_dir = Path(outputs_root) / subset / str(schema_model) / "schemagen"
-        sims_path = Path(outputs_root) / subset / "_similarities" / f"{embed_name}.json"
+        schemagen_dir = Path(art_root) / subset / "schemagen" / str(schema_model)
+        sims_path = Path(art_root) / subset / "similarities" / f"{embed_name}.json"
 
         if "schemagen" in stages:
             if not schema_model:
@@ -122,7 +131,7 @@ def main() -> None:
                     *model_args(schema_model, sg_spec, sg_cfg),
                     "--model-name", schema_model,
                     "--input", data_dir,
-                    "--output", f"{outputs_root}/{subset}/{schema_model}",
+                    "--output", str(schemagen_dir),
                     *_common_argv(cfg),
                 ]
                 run("baselines.correct.schemagen", argv, args.dry_run)

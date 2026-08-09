@@ -39,7 +39,8 @@
    the original data. We also do not replicate the `is_handcrafted="False"`
    truthiness bug that made the paper's cloud runs label algorithm-generated
    turns `user:`/`assistant:`.
-2. **Schemata as per-trajectory JSONs** keyed by trajectory id, instead of one
+2. **Schemata as per-trajectory JSONs** keyed by trajectory id
+   (`artifacts/<ds>/<subset>/schemagen/<schema_model>/<id>.json`), instead of one
    `error_schemata.txt` whose 1-based enumeration must coincide with file
    numbering (silently mis-keys retrieval if any file is skipped). Schema text
    bytes are unchanged; resume comes free.
