@@ -56,8 +56,8 @@ The CORRECT baseline (3-stage pipeline: schema generation → similarity →
 schema-guided detection; see [`baselines/correct/README.md`](baselines/correct/README.md)):
 
 ```bash
-DATASET=ww GPU=0 bash scripts/correct.sh                  # full pipeline, local models
-DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct.sh
+DATASET=ww GPU=0 bash scripts/correct/run.sh                  # full pipeline, local models
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct/run.sh
 ```
 
 Or the full grid per dataset:

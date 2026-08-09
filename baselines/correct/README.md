@@ -1,208 +1,157 @@
-# CORRECT baseline (local re-implementation)
+# CORRECT baseline
 
-Re-implementation of **CORRECT** (*Condensed Error Recognition via Knowledge
-Transfer in Multi-agent Systems*, ICML 2026 — vendored at
-[`baselines/CORRECT/`](../CORRECT)) adapted to this repo's models, datasets and
-conventions. Standalone: no imports from `baselines/CORRECT` (only from
-`baselines/prompting`, like the chief baseline).
+Reproduction of **CORRECT** (COndensed eRror RECognition via knowledge
+Transfer; the paper is vendored at
+[`vendored/CORRECT/correct.pdf`](../../vendored/CORRECT/correct.pdf)) — a
+training-free, retrieval-based failure-attribution method. Instead of judging a
+trajectory in isolation, an LLM detector is shown **error schemata** distilled
+offline from *other* annotated failures and retrieved by trajectory similarity.
 
-CORRECT is training-free schema-guided error localization, in three stages:
+## The variant this repo implements
 
-1. **Schema generation** (`schemagen.py`, vLLM) — for every annotated
-   trajectory, an LLM distills the gold error (agent / step / reason + full
-   conversation) into a reusable "error schema"; one vendored-format
-   `error_schemata.txt` per (model, subset).
-2. **Trajectory similarities** (`similarity.py`, HF transformers) — BGE-M3
-   embeddings of each trajectory, cosine-ranked neighbour lists with self
-   excluded (the leave-one-out mask: a trajectory never sees its own schema).
-3. **Schema-guided detection** (`predict.py`, vLLM) — the top-k most-similar
-   trajectories' schemata are appended to the vendored all-at-once prompt; the
-   model outputs `Agent Name:` / `Step Number:`, parsed with the vendored
-   regexes into the house predictions JSONL.
+The vendored code has two prompt families: a local-vLLM path used for the
+paper's CORRECT-Error table, and the **cloud path**
+([`src/Lib/cloud_paper.py`](../../vendored/CORRECT/src/Lib/cloud_paper.py)) the
+authors keep byte-identical to their paper runs — the only path ever used with
+closed-source detectors. Per project decision this repo implements the **cloud
+variant for all datasets and backends**: the "THOUGHT TEMPLATE FOR GUIDANCE"
+schema injection, the cloud schema-generation prompt (step-numbered history +
+a trailing block carrying the source trajectory's gold agent/step — retrieved
+schemata deliberately show labeled exemplars), and the cloud unicode scrubbing.
+
+## Pipeline
+
+Three stages, all resumable, orchestrated by `sweep.py` (each stage is also a
+directly-invocable module):
+
+| stage | module | writes |
+|---|---|---|
+| 1. schemagen | `schemagen.py` — one LLM call per trajectory distills a schema from the gold labels | `outputs/<ds>/<subset>/<schema_model>/schemagen/<id>.json` |
+| 2. similarity | `similarity.py` — BGE-M3 embeddings → ranked neighbour lists (self excluded) | `outputs/<ds>/<subset>/_similarities/bge-m3.json` (+ `.meta.json`) |
+| 3. detection | `predict.py` — all-at-once prompt + top-k retrieved neighbour schemata | `.../<subset>/<model>/<method>/<id>.json` |
+
+One `schema_model` per config distills the schemata; **all detectors share
+them** (the paper's design — a strong generator, many detectors). Stage-1/2
+artifacts are corpus-scoped and GT-independent; both detection settings reuse
+them.
+
+Methods: **`correct`** (schema-guided, needs stages 1–2) and
+**`correct_baseline`** (the vendored k=0 baseline prompt, no artifacts) — the
+paper's baseline rows, isolating the effect of the schemata.
+
+Retrieved-schema count `num_schemata` (paper §A.3): Who&When
+algorithm-generated **1**, hand-crafted **10**, CORRECT-Error **5**;
+TraceElephant is not in the paper — we default to **10** (its trajectories are
+long GAIA-style runs like hand-crafted).
+
+## GT settings
+
+The repo-wide GT axis (GUIDE.md) applies, with one inversion: **the vendored
+cloud path never puts the task answer in the detection prompt**, so for this
+baseline `--gt without` is the parity-tested paper setting **and the default**
+(prompting is the opposite: its vendored prompt carries the answer). `--gt
+with` inserts the vendored answer line `The Answer for the problem is: ...`
+(bytes from the vendored local path) after the problem line. As everywhere:
+with-GT detection lands under `outputs/`, without-GT mirrors into
+`outputs-nogt/`.
+
+Ground truth in **stage 1** is a corpus property, not a flag: the schemagen
+prompt always interpolates `Ground Truth: {ground_truth}` (vendored, gold-
+conditioned). On `data/correct-error` the restored answers fill that slot as
+the paper's Fig. 9 intends; point `data_dir` at `data/correct-error-nogt` to
+reproduce the as-released corpus where the slot renders blank.
 
 ## Running
 
 ```bash
-# everything: (qwen3.5-9b, deepseek-8b) × (ww, traceelephant, correct-error)
-GPU=0 bash baselines/correct/scripts/run_correct.sh
+# Full pipeline, one dataset (paper setting; local models):
+DATASET=ww GPU=0 bash scripts/correct/run.sh
 
-# subsets of the grid (env knobs, matching the SVD/CRR scripts)
-GPU=0 MODELS="qwen3.5-9b" DATASETS="ww" bash baselines/correct/scripts/run_correct.sh
-GPU=0 DRY_RUN=1 bash baselines/correct/scripts/run_correct.sh              # preview
-GPU=0 EXTRA_SET="--set overwrite=true" bash baselines/correct/scripts/run_correct.sh
+# One model / subset / stage:
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct/run.sh      # needs OPENAI_API_KEY
+DATASET=correct-error STAGES=schemagen MODEL=gpt-5 bash scripts/correct/run.sh
+GT=with DATASET=ww MODEL=qwen3.5-9b bash scripts/correct/run.sh              # with-GT extension
 
-# one dataset by hand
+# Or the sweep directly:
 python -m baselines.correct.sweep --config baselines/correct/configs/ww.yaml [--dry-run]
-
-# report (completion check + per-seed val/test tables next to SVD/CRR)
-python -m baselines.correct.report --config baselines/correct/configs/report_ww.yaml
 ```
 
-All stages are idempotent (existing outputs are skipped unless
-`--set overwrite=true`). Outputs land under `outputs-<ds>/correct/`:
+Everything is idempotent per trajectory (file existence = resume ledger). API
+detectors can consume locally-generated schemata and vice versa: run the
+schemagen stage from one config, name the same `schema_model:` in the other.
 
-```
-outputs-<ds>/correct/
-├── schemata/<model>/<subset>/error_schemata.txt      # stage 1 (per model)
-├── similarities/<subset>_trajectory_similarities.json # stage 2 (model-independent)
-└── <model>/<subset>/predictions_method-correct.jsonl  # stage 3
-```
+## Evaluation
 
-**Prerequisite:** the embedding model must be available at
-`../hub/BAAI/bge-m3` (or point `embed_model_path` elsewhere / at the HF id).
-
-## Evaluation protocol & data use (read before comparing)
-
-CORRECT is **transductive over gold labels** — the faithful reproduction of the
-paper's protocol, but a different supervision regime than the other baselines:
-
-- **Every trajectory is evaluated, and every trajectory supervises the
-  others.** No data is set aside for schema generation: stage 1 distills a
-  schema from *each* trajectory's gold annotations (`mistake_agent`,
-  `mistake_step`, `mistake_reason`, plus question, gold answer, and the full
-  conversation), over the whole subset.
-- **The retrieval pool for a trajectory `t` is the entire subset minus `t`
-  itself** (self is excluded by construction of the similarity lists — the
-  paper's only masking: "we mask each trajectory itself and avoid receiving
-  its own error schema"). The pipeline is completely split-agnostic: the
-  train/val/test split exists only in `report.py`, which selects which
-  prediction *rows* are averaged per seed. So a test trajectory's retrieved
-  schemata can come from train, val, **or other test trajectories** of that
-  same seed.
-- **The query trajectory's own prompt contains no gold information about
-  itself** — no labels and, unlike the ww/traceelephant prompting/chief
-  prompts, no ground-truth answer either (`gt_in_prompt: false` everywhere).
-
-Fairness implications when reading the tables:
-
-- prompting / chief never see any gold error labels (though their ww and
-  traceelephant prompts include the gold *answer*, which CORRECT's do not);
-  SVD/CRR fits its reference unsupervised on train and touches labels only via
-  val-based config selection. CORRECT, by contrast, answers "how well does
-  schema transfer work *given an annotated corpus of the other failures*" —
-  strictly more supervision, per its published protocol. Footnote this when
-  comparing.
-- A split-respecting variant (filter `similarities[t]` to train(+val) ids
-  before the top-k in `predict.py`) is easy to add but is deliberately **not**
-  implemented: it would deviate from the vendored protocol and make
-  predictions per-seed (one inference pass per seed instead of one).
-
-## Setup choices
-
-- **Schema generator = the detector backbone** (per-model schema caches). The
-  paper uses a strong external generator (GPT-5 / Qwen2.5-72B); here each
-  (model, dataset) cell is fully self-contained, consistent with how chief runs
-  all of its stages with one backbone.
-- **k (retrieved schemata), per the paper where available**: Who&When
-  algorithm-generated **1**, hand-crafted **10**, CORRECT-Error **5**;
-  TraceElephant is not in the paper → **10** (the hand-crafted setting; long
-  trajectories of comparable style). Config axis `num_schemata` (int or
-  per-subset map).
-- `--num_schemata 0` runs the vendored no-schema LLM-as-a-Judge baseline
-  (method name `correct-base`). Note it is *not* the same measurement as the
-  prompting baseline's `all_at_once`: CORRECT's vLLM prompt excludes the gold
-  answer and does not number the steps. Supported but not run by default.
-
-## Faithfulness to the vendored implementation
-
-Both vendored inference scripts (`inference_whoandwhen.py`,
-`inference_correct_error.py`) route open models through the **same vLLM code
-path** (`Lib/local_model.py`), which is what this package replicates:
-
-- The base all-at-once prompt, the schema-injection wording
-  ("Here's a error schema…" / "Here are error schemata…" + "You can neglect
-  it…"), the system prompts, the schema-generation prompt, the greedy sampling
-  (`temperature=0.0, top_p=1.0, max_tokens=1024`; schema-gen
-  `0.7/0.95/1024`), the "Agent Name:"-block response trim, and the
-  `evaluate.py` parsing regexes are all **verbatim**. In this path the active
-  prompt **excludes the gold answer** and does **not** number the conversation
-  steps (both variants are commented out in the vendored source; the paper
-  confirms the answer is excluded).
-- Retrieval: both vendored variants are implemented behind
-  `scan_until_filled` — `false` = Who&When script (inspect only the top-k
-  neighbours), `true` = CORRECT-Error script (scan until k schemata found,
-  capped at 5k checked). With complete per-model schema caches (ours) the two
-  are identical.
-- Schema #n ↔ trajectory `n.json` alignment relies on the numeric filename
-  sort shared by all three stages, as vendored.
-
-A parity test (`tests/test_parity.py`) drives the **vendored functions
-end-to-end** (vllm stubbed, fake capture classes monkeypatched in) on identical
-dummy trajectories/schemata and asserts: byte-identical templated prompts
-(base, single-/multi-schema injected, no-schema fallback, schema-gen),
-identical response trims, deep-equal schemata-file round-trips through both
-vendored loaders, deep-equal retrievals from both vendored analyzers (complete
-and holey caches), parse agreement with the vendored `evaluate.py`, and
-identical similarity rankings through both codepaths with a deterministic fake
-encoder. Run from the repo root:
+Shared report, correct methods, per-seed splits (ww/te seeds 1–20, ce 1–3):
 
 ```bash
-python -m pytest baselines/correct/tests/test_parity.py -q   # or
-python -m baselines.correct.tests.test_parity
+python -m baselines.correct.report --config baselines/correct/configs/report_ww.yaml [--check-only]
+# --gt with evaluates the with-GT tree; default (without) reads outputs-nogt/.
 ```
 
-Real-data cross-check: our regenerated `ww/algorithm-generated` similarities
-agree with the author-shipped
-`baselines/CORRECT/data/similarities_whoandwhen/…` file on 90/126 top-1
-neighbours. Full rankings differ because the cosine scores are near-ties
-(median top1–top2 gap ≈ 0.007; mean top-1 sim ≈ 0.90), so environment-level
-numerics (library/kernel versions, GPU, the authors' exact data copy) reorder
-them — the ranking *code* is parity-tested as identical. We always use our own
-regenerated artifacts, never the shipped ones, so schema/similarity indices are
-self-consistent by construction.
+## Faithfulness notes (the details that bite)
 
-### Deliberate deviations (infrastructure only)
+- **Two base prompts, three byte diffs.** The k=0 baseline prompt
+  (`cloud_paper.py:173-192`) differs from the schema-guided base
+  (`cloud_paper.py:364-375`): no space before the newline after the problem, a
+  triple-quoted *indented* JSON example, and the tail `Reason for Mistake: \n`
+  vs `(Your reason)\n`. Both are reproduced verbatim.
+- **Scrub asymmetry.** The schema-guided path ASCII-scrubs user *and* system
+  prompt with `clean_text` (every non-ASCII char → space, including the `•`
+  bullets of the injection block); the baseline path only maps smart
+  quotes/dashes (`_clean_unicode_content`). We apply each at message-build
+  time — our backends send messages verbatim, and the vendored call-time
+  `_clean_unicode_content` is a no-op on already-scrubbed text.
+- **Retrieval is the Who&When top-k slice** (`inference_whoandwhen.py:222-283`):
+  `similar_indices[:k]`, keep only neighbours that have schemata — *silently
+  fewer* than k, empty for unknown ids, no random fallback. Self never appears
+  (stage 2 drops self-similarity). The CE variant's scan-until-filled loop is
+  not adapted.
+- **Schemata carry gold labels.** The cloud generator prompt ends with a format
+  block containing the source trajectory's gold `Agent Name:`/`Step Number:` —
+  retrieved schemata show other trajectories' answers by design. Leakage of the
+  *query's* label is prevented only by self-exclusion.
+- **Similarity ties follow file order.** The vendored ranking visits files in
+  lexicographic `listdir` order and Python's stable sort preserves it for exact
+  ties — do not "fix" to numeric order.
+- **Sampling.** Local detection is greedy (`temperature 0.0/top_p 1.0`, the
+  vendored CORRECT inference defaults); schemagen uses the vendored `0.7/0.95/
+  1024`. API specs send exactly their declared `params` — the vendored cloud
+  path sets `max_tokens` only (8192 in the runner script; never temperature),
+  and exports `OPENAI_REASONING_EFFORT=medium` for gpt-5 (declared as a param
+  in our api configs).
 
-1. **vLLM via `PromptEngine`** (reused from `baselines/prompting`) instead of a
-   raw `LLM(...)` per stage — same single batched `.chat()` call, house
-   dtype/seed/chat-template handling. The vendored print-batching loop in the
-   schema generator (batches of 32) is likewise one batched call — identical
-   results, sampling is per-prompt.
-2. **No YaRN `rope_scaling`** — the vendored `factor=4` (inference) /
-   `factor=10` (schema-gen) hack worked around Qwen2.5's 32k context;
-   qwen3.5-9b and deepseek-8b natively support ≥128k (`max_model_len: 131072`,
-   as chief/prompting).
-3. **Reasoning-model handling** (same fixes as chief/prompting; deepseek-8b
-   always emits `<think>`):
-   `strip_think` (hardened variant) is applied **before** the vendored
-   "Agent Name:" trim at inference and **before writing schemata** (a schema
-   with an embedded reasoning trace would pollute every future retrieval
-   prompt); `enable_thinking` is a config toggle through the adapter's chat
-   template; the run script bumps deepseek to `gen_max_tokens=8192` for *both*
-   vLLM stages (thinking + answer share the budget — the vendored 1024 would
-   truncate mid-think); the corrected deepseek tokenizer dir
-   (`baselines/prompting/tokenizers/deepseek-8b`) is passed via
-   `tokenizer_paths`; parsing strips markdown decoration first (deepseek bolds
-   `**Agent Name:**`) — a no-op on vendored-style outputs.
-4. **Agent identity is `history[t]["role"]`** for every dataset — this is what
-   the vendored `_agent_label(entry, "role")` reads, and the `name`-preferred
-   branch falls back to `role` anyway on this repo's data (parity-tested under
-   both `is_handcrafted` flags).
-5. **`ground_truth` key in schema-gen** — the vendored generator reads the raw
-   CORRECT-Error key `groundtruth`; this repo's normalized data stores
-   `ground_truth` (empty string on correct-error, populated elsewhere — the
-   inference prompt never contains it either way).
-6. **Predictions as JSONL at write time** (house format consumed by the shared
-   report) instead of stdout logs + a separate `evaluate.py`; the regexes are
-   verbatim and applied to the vendored-style trimmed response, and `raw` is
-   stored untouched so rows can be re-parsed.
-7. **Schema blocks keyed by numeric filename** instead of a 1-based enumeration
-   position. Byte-identical on this repo's data (contiguous `1.json…N.json`,
-   all valid); keying by filename simply removes the misalignment the vendored
-   enumeration would cause if a file were skipped, since retrieval looks
-   schemata up by file number.
+## Deliberate deviations (all infrastructure-level; prompts/decisions verbatim)
 
-## Conventions that bite
+1. **Agent key is `role`, always.** The vendored autodetect (use `name` if the
+   first entry has it) targeted the *original* Who&When layout; this repo's
+   algorithm-generated data swaps the fields (`role` = agent name, `name` =
+   `user`/`assistant`), so `role` reproduces what the vendored code yields on
+   the original data. We also do not replicate the `is_handcrafted="False"`
+   truthiness bug that made the paper's cloud runs label algorithm-generated
+   turns `user:`/`assistant:`.
+2. **Schemata as per-trajectory JSONs** keyed by trajectory id, instead of one
+   `error_schemata.txt` whose 1-based enumeration must coincide with file
+   numbering (silently mis-keys retrieval if any file is skipped). Schema text
+   bytes are unchanged; resume comes free.
+3. **`strip_think`** on schema text and before parsing, so local reasoning
+   backbones work (the vendored GPT outputs have no think blocks).
+4. **Parsing shared with prompting** (`parse_all_at_once`): the vendored
+   `CORRECT/src/evaluate.py` regexes are the identical family; prompting's
+   paren/markdown tolerance applies uniformly across baselines.
+5. **Retries/concurrency from the shared backends** (the vendored code has no
+   retry logic — a failed call is a lost prediction); batching/threading via
+   the shared runner instead of the vendored 10-file batch windows and sleeps.
+   Neither changes prompt bytes.
+6. **Evaluation via the shared report** (agent@1 + step@1 on per-seed splits)
+   instead of the vendored stdout-log + `evaluate.py` (step accuracy only,
+   whole-corpus). The vendored `±tolerance` Acc@k metric is not reproduced.
 
-- Run everything **from the repo root** (`python -m baselines.correct.…`);
-  model paths in the configs are `../hub/...` relative to it.
-- The three stages must see the **same subset directory** — the schema cache
-  and neighbour lists are keyed by numeric filename, so regenerating a subset's
-  data invalidates both artifacts (delete `outputs-<ds>/correct/schemata/…`
-  and `…/similarities/…` and rerun).
-- Per-model schema caches mean stage 1 runs once per (model, subset); the
-  similarity JSON is model-independent and computed once per subset.
-- The report reuses `baselines/prompting/report.py` (`methods: [correct]`),
-  which reproduces the CRR/SVD per-seed val/test splits byte-identically —
-  step@1 compares ints with no offset (0-based everywhere), agent@1 is the
-  `standardize_role`-lowered substring rule.
+## Tests
+
+`tests/test_correct_{parity,methods,similarity,pipeline}.py` — CPU-only,
+keyless. The parity tests drive the vendored modules themselves (fake OpenAI
+client, so the vendored scrubbing runs for real) and assert byte-identical
+messages, injection branches, schemagen prompts, retrieval decisions and
+similarity rankings; the pipeline tests run every stage end-to-end on the dummy
+backend, including resume and the report integration.

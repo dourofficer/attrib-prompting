@@ -1,6 +1,6 @@
 # Baseline adaptation guide
 
-Conventions every baseline in this repo (prompting — done; chief, correct —
+Conventions every baseline in this repo (prompting, correct — done; chief —
 upcoming) must follow. The contract covers **I/O, configs, resume, and
 evaluation**; the method's internal logic stays free to follow its vendored
 implementation faithfully.
@@ -70,9 +70,12 @@ appears in prompts exactly as the vendored code puts it there) and
 method — for prompting it is dropping the `The Answer for the problem is:`
 line). Conventions:
 
-- `predict` and `sweep` expose `--gt {with,without}` (default `with`); the
-  method's prompt builders take a plain `include_gt: bool = True` so the
-  with-GT bytes stay the parity-tested default.
+- `predict` and `sweep` expose `--gt {with,without}`; the method's prompt
+  builders take a plain `include_gt: bool` whose **default matches the vendored
+  bytes**, and the CLI defaults to that same setting — `with` for a baseline
+  whose vendored prompt carries the answer (prompting), `without` for one whose
+  vendored path excludes it (correct). Either way the parity-tested bytes are
+  what you get by default.
 - With-GT results live under `outputs/`; without-GT results mirror into
   **`outputs-nogt/`** with the identical inner layout — map roots with
   `baselines.shared.common.nogt_root`, never invent another scheme.

@@ -1,7 +1,7 @@
 # scripts/
 
 Front doors for running the baselines. One subdirectory per baseline family —
-`prompting/` today; `chief/` and `correct/` get their own as they are adapted.
+`prompting/` and `correct/` today; `chief/` gets its own when it is adapted.
 This README stays at `scripts/` and covers all of them.
 
 ## prompting/
@@ -49,6 +49,41 @@ Closed-source and local models live in separate configs. The script picks
 `model_specs` (API models: `gpt-4o`, `gpt-5`, ...), and `configs/<DATASET>.yaml`
 otherwise (local vLLM: `qwen3.5-9b`, `deepseek-8b`). To add an API model, add a
 spec block to the `-api` config and put it in `models:` — no code changes.
+
+## correct/
+
+One front door for the whole CORRECT pipeline (schemagen → similarity →
+schema-guided detection; see
+[`baselines/correct/README.md`](../baselines/correct/README.md)):
+
+```bash
+DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/correct/run.sh
+```
+
+Examples:
+
+```bash
+DATASET=ww GPU=0 bash scripts/correct/run.sh                       # everything, local models
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct/run.sh
+DATASET=correct-error STAGES=schemagen MODEL=gpt-5 bash scripts/correct/run.sh   # schemata only
+DATASET=ww MODEL=qwen3.5-9b END_IDX=10 DRY_RUN=1 bash scripts/correct/run.sh    # preview
+```
+
+Same env knobs as the prompting scripts (`GT`, `GPU`, `START_IDX`/`END_IDX`,
+`DRY_RUN`, `OVERWRITE`, `EXTRA_SET`, `CONFIG`; same config resolution against
+`baselines/correct/configs/`), plus:
+
+| var | meaning |
+|---|---|
+| `MODEL` | optional here — omit to run every model in the config |
+| `METHOD` | `correct` (schema-guided) or `correct_baseline` (k=0) — omit for both |
+| `STAGES` | comma-list of `schemagen,similarity,predict` (default: all) |
+
+Two CORRECT-specific notes: the default GT setting is **`without`** (the
+vendored cloud path never puts the answer in the detection prompt — the paper
+setting), so detection results land in `outputs-nogt/` unless `GT=with`; and
+stage-1/2 artifacts (`<subset>/<schema_model>/schemagen/`, `_similarities/`)
+are GT-independent and always live under `outputs/`.
 
 ## I/O — what each operation reads and writes
 
