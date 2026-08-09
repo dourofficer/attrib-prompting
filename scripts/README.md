@@ -93,21 +93,8 @@ Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
 | operation | reads | writes |
 |---|---|---|
 | `scripts/prompting/<method>.sh` | `baselines/prompting/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
-| `… → baselines.prompting.sweep` | the config above | nothing — shells out one `predict` per (model, subset, method) |
 | `… → baselines.prompting.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing `<gt-root>/…/<id>.json` (resume ledger); `$OPENAI_API_KEY` for API models; `../hub/<checkpoint>` for vLLM | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (one per trajectory, atomic) and `…/<METHOD>/_run.json` (run snapshot) |
 | `baselines.prompting.report --config configs/report_<ds>.yaml [--gt without]` | `data/<ds>/<subset>/*.json` (split universe only); `<gt-root>/<ds>/<subset>/<model>/<method>/[0-9]*.json` | `<gt-root>/<ds>/reports/completion_status.tsv`, `…/reports/<model>/<subset>/comparison_by_seed.tsv`, `…/reports/summary_mean_over_seeds.tsv` |
-| `baselines.prompting.report --check-only` | same as above | only `completion_status.tsv` |
-| `baselines.prompting.reparse [--dry-run]` | `<any-root>/<ds>/<subset>/<model>/all_at_once/[0-9]*.json` | rewrites those same files in place (re-derives `predicted_*` from stored `raw`; `--dry-run` writes nothing) |
-
-Per-trajectory output files carry `gt_in_prompt`, `model`, `backend`, `method`,
-the gold labels, the decisive `raw`, and the full `calls` log — so any single
-file is auditable on its own. `_run.json` records the exact `request_params`
-sent, the GT setting, and the resume counts.
-
-Audit tips: `_run.json` → what was actually sent; `completion_status.tsv` →
-whether a cell is `DONE`/`PARTIAL` and how many outputs are unparsed
-(`fmt_fail`) vs. legitimately empty (`no_pred`); a run is complete when its file
-count equals the corpus count for that subset.
 
 ## TODO — the full sweep, both GT settings
 
@@ -175,18 +162,6 @@ first**; extend to others afterwards.
   ```bash
   git add outputs/ outputs-nogt/ && git commit -m "GPT-4o/GPT-5 prompting results, both GT settings"
   ```
-
-### ⚠ Stale `outputs/correct-error/` — re-run before reporting
-
-The committed `outputs/correct-error/` results were produced **before**
-`data/correct-error` was populated with real answers, so their prompts contain
-an empty `The Answer for the problem is: ` line — neither a true with-GT nor a
-true without-GT run (they also predate `gt_in_prompt`, which is absent from
-their `_run.json`). Because resume is file-existence based, step 3 would
-silently keep them. Either re-run that dataset with `OVERWRITE=1`, or move the
-old tree aside first. `ww` and `traceelephant` are unaffected — their corpora
-always carried answers. `data/correct-error-nogt/` preserves the old empty-GT
-corpus if you want to reproduce those runs exactly.
 
 ## Other scripts
 
