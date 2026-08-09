@@ -190,10 +190,23 @@ def test_builders_match_goldens():
 
 
 def test_parse_regexes_match_vendored_evaluate():
+    # Our regexes are the vendored evaluate.py patterns plus optional
+    # surrounding parentheses (a documented deviation: API models mimic the
+    # prompt's literal "Agent Name: (Your prediction)" format). Pin both the
+    # vendored originals and the exact tolerant form so any further drift
+    # fails here.
     evaluate_src = (REPO_ROOT / "vendored/Agents_Failure_Attribution/Automated_FA/evaluate.py") \
         .read_text(encoding="utf-8")
-    assert AGENT_RE.pattern in evaluate_src
-    assert STEP_RE.pattern in evaluate_src
+    assert r"Agent Name:\s*([\w_]+)" in evaluate_src
+    assert r"Step Number:\s*(\d+)" in evaluate_src
+    assert AGENT_RE.pattern == r"Agent Name:\s*\(?\s*([\w_]+)\s*\)?"
+    assert STEP_RE.pattern == r"Step Number:\s*\(?\s*(\d+)\s*\)?"
+    # The wrappers are a strict superset: unparenthesized (vendored-shaped)
+    # outputs parse identically; parenthesized ones now parse too.
+    assert AGENT_RE.search("Agent Name: WebSurfer").group(1) == "WebSurfer"
+    assert AGENT_RE.search("Agent Name: (WebSurfer)").group(1) == "WebSurfer"
+    assert STEP_RE.search("Step Number: 4").group(1) == "4"
+    assert STEP_RE.search("Step Number: (4)").group(1) == "4"
 
 
 def test_parse_all_at_once_variants():

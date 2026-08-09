@@ -47,7 +47,12 @@ AGENT_KEY = "role"
 
 SYSTEM_PROMPT = "You are a helpful assistant skilled in analyzing conversations."
 
-# Parsing regexes — identical to the vendored evaluate.py.
+# Parsing regexes — the vendored evaluate.py patterns (`Agent Name:\s*([\w_]+)`,
+# `Step Number:\s*(\d+)`) plus optional surrounding parentheses. The prompt's
+# literal format string is "Agent Name: (Your prediction)", and some API models
+# (GPT-4o/GPT-5) mimic it — `Agent Name: (WebSurfer)` — which the vendored
+# regexes would miss. The wrappers are a no-op on unparenthesized outputs, so
+# well-formed responses parse identically to the vendored code.
 AGENT_RE = re.compile(r"Agent Name:\s*\(?\s*([\w_]+)\s*\)?", re.IGNORECASE)
 STEP_RE = re.compile(r"Step Number:\s*\(?\s*(\d+)\s*\)?", re.IGNORECASE)
 
