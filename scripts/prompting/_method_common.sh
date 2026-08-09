@@ -5,13 +5,13 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: MODEL=<name> DATASET=<ww|correct-error|correct-error-gt|traceelephant> [SUBSET=<subset>] scripts/${METHOD}.sh" >&2
+  echo "Usage: MODEL=<name> DATASET=<ww|correct-error|correct-error-nogt|traceelephant> [SUBSET=<subset>] scripts/prompting/${METHOD}.sh" >&2
   echo "Optional env: GT=with|without, GPU, START_IDX, END_IDX, DRY_RUN=1, OVERWRITE=1, EXTRA_SET=\"--set k=v ...\"" >&2
   exit 1
 }
 [[ -n "${MODEL:-}" && -n "${DATASET:-}" ]] || usage
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Config resolution: the API config if it declares MODEL in model_specs,

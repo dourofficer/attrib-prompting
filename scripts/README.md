@@ -1,30 +1,30 @@
 # scripts/
 
-Front doors for running one attribution method at a time, plus utilities.
+Front doors for running the baselines. One subdirectory per baseline family —
+`prompting/` today; `chief/` and `correct/` get their own as they are adapted.
+This README stays at `scripts/` and covers all of them.
 
-## Per-method scripts
+## prompting/
 
 ```bash
-MODEL=<name> DATASET=<ww|correct-error|correct-error-gt|traceelephant> [SUBSET=<subset>] bash scripts/<method>.sh
+MODEL=<name> DATASET=<ww|correct-error|correct-error-nogt|traceelephant> \
+  [SUBSET=<subset>] [GT=with|without] bash scripts/prompting/<method>.sh
 ```
 
-where `<method>.sh` is one of `all_at_once.sh`, `step_by_step.sh`, `binary_search.sh`.
-
-Examples:
+`<method>.sh` is `all_at_once.sh`, `step_by_step.sh`, or `binary_search.sh`.
 
 ```bash
-# GPT-4o on one subset (needs OPENAI_API_KEY exported):
-MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted bash scripts/all_at_once.sh
+# GPT-4o on one subset, with-GT (default; needs OPENAI_API_KEY exported):
+MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted bash scripts/prompting/all_at_once.sh
 
-# ...on every subset of a dataset (omit SUBSET):
-MODEL=gpt-4o DATASET=correct-error bash scripts/step_by_step.sh
+# ...without-GT, every subset of a dataset (omit SUBSET):
+MODEL=gpt-4o DATASET=correct-error GT=without bash scripts/prompting/step_by_step.sh
 
 # Local vLLM model on one GPU:
-MODEL=qwen3.5-9b DATASET=traceelephant SUBSET=captain GPU=0 bash scripts/binary_search.sh
+MODEL=qwen3.5-9b DATASET=traceelephant SUBSET=captain GPU=0 bash scripts/prompting/binary_search.sh
 
 # Quick 10-sample trial, preview first:
-MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 DRY_RUN=1 bash scripts/all_at_once.sh
-MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 bash scripts/all_at_once.sh
+MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 DRY_RUN=1 bash scripts/prompting/all_at_once.sh
 ```
 
 ### Environment knobs
@@ -32,7 +32,7 @@ MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 bash scripts/all_at_once.
 | var | meaning |
 |---|---|
 | `MODEL` (required) | model name — must be declared in the dataset's config `model_specs` |
-| `DATASET` (required) | `ww`, `correct-error`, `correct-error-gt`, or `traceelephant` |
+| `DATASET` (required) | `ww`, `correct-error`, `correct-error-nogt`, or `traceelephant` |
 | `SUBSET` | one subset; omit to run all subsets of the dataset |
 | `GT` | `with` (default) or `without` — drops the answer line from prompts and writes to `outputs-nogt/` |
 | `GPU` | sets `CUDA_VISIBLE_DEVICES` (local vLLM models) |
@@ -45,87 +45,124 @@ MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 bash scripts/all_at_once.
 ### Config resolution
 
 Closed-source and local models live in separate configs. The script picks
-`baselines/prompting/configs/<DATASET>-api.yaml` when it declares `MODEL` in
-its `model_specs` (API models: `gpt-4o`, `gpt-5`, ...), and
-`configs/<DATASET>.yaml` otherwise (local vLLM models: `qwen3.5-9b`,
-`deepseek-8b`). To add a new API model, add a spec block to the `-api` config
-and put it in `models:` — no code changes.
+`baselines/prompting/configs/<DATASET>-api.yaml` when it declares `MODEL` in its
+`model_specs` (API models: `gpt-4o`, `gpt-5`, ...), and `configs/<DATASET>.yaml`
+otherwise (local vLLM: `qwen3.5-9b`, `deepseek-8b`). To add an API model, add a
+spec block to the `-api` config and put it in `models:` — no code changes.
 
-Runs are **idempotent per trajectory**: outputs land as
-`outputs/<dataset>/<subset>/<model>/<method>/<id>.json` the moment each
-trajectory completes, and rerunning the same command executes only the missing
-ones — so a crashed or interrupted (API) run resumes where it left off.
+## I/O — what each operation reads and writes
 
-## TODO — running the full API sweep
+Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
+`outputs-nogt` when `GT=without`; the inner layout is identical in both.
 
-Step-by-step instructions to produce the {all_at_once, step_by_step,
-binary_search} × {ww, traceelephant, correct-error} results. Target models:
-**GPT-4o and GPT-5 first**; extend to other models afterwards.
+| operation | reads | writes |
+|---|---|---|
+| `scripts/prompting/<method>.sh` | `baselines/prompting/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
+| `… → baselines.prompting.sweep` | the config above | nothing — shells out one `predict` per (model, subset, method) |
+| `… → baselines.prompting.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing `<gt-root>/…/<id>.json` (resume ledger); `$OPENAI_API_KEY` for API models; `../hub/<checkpoint>` for vLLM | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (one per trajectory, atomic) and `…/<METHOD>/_run.json` (run snapshot) |
+| `baselines.prompting.report --config configs/report_<ds>.yaml [--gt without]` | `data/<ds>/<subset>/*.json` (split universe only); `<gt-root>/<ds>/<subset>/<model>/<method>/[0-9]*.json` | `<gt-root>/<ds>/reports/completion_status.tsv`, `…/reports/<model>/<subset>/comparison_by_seed.tsv`, `…/reports/summary_mean_over_seeds.tsv` |
+| `baselines.prompting.report --check-only` | same as above | only `completion_status.tsv` |
+| `baselines.prompting.reparse [--dry-run]` | `<any-root>/<ds>/<subset>/<model>/all_at_once/[0-9]*.json` | rewrites those same files in place (re-derives `predicted_*` from stored `raw`; `--dry-run` writes nothing) |
 
-- [ ] **1. Setup.** `pip install -e ".[api]"` and `export OPENAI_API_KEY=sk-...`.
+Per-trajectory output files carry `gt_in_prompt`, `model`, `backend`, `method`,
+the gold labels, the decisive `raw`, and the full `calls` log — so any single
+file is auditable on its own. `_run.json` records the exact `request_params`
+sent, the GT setting, and the resume counts.
 
-- [ ] **2. Smoke test** (10 trajectories, preview then run):
+Audit tips: `_run.json` → what was actually sent; `completion_status.tsv` →
+whether a cell is `DONE`/`PARTIAL` and how many outputs are unparsed
+(`fmt_fail`) vs. legitimately empty (`no_pred`); a run is complete when its file
+count equals the corpus count for that subset.
+
+## TODO — the full sweep, both GT settings
+
+Produce {all_at_once, step_by_step, binary_search} × {ww, traceelephant,
+correct-error} × {with-GT, without-GT}. Target models: **GPT-4o and GPT-5
+first**; extend to others afterwards.
+
+- [ ] **1. Setup.** `pip install -e ".[api]"`, `export OPENAI_API_KEY=sk-...`.
+
+- [ ] **2. Smoke test** (10 trajectories, preview then run, both settings):
 
   ```bash
-  MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 DRY_RUN=1 bash scripts/all_at_once.sh
-  MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 bash scripts/all_at_once.sh
+  MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 DRY_RUN=1 bash scripts/prompting/all_at_once.sh
+  MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 bash scripts/prompting/all_at_once.sh
+  MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 GT=without bash scripts/prompting/all_at_once.sh
   ```
 
-  Inspect a few `outputs/ww/hand-crafted/gpt-4o/all_at_once/<id>.json` (parsed
-  `predicted_agent`/`predicted_step`, sane `raw`) before scaling up.
+  Check `outputs/ww/hand-crafted/gpt-4o/all_at_once/1.json` and its
+  `outputs-nogt/…` twin: `gt_in_prompt` must be `true` / `false` respectively,
+  with sane `raw` and parsed `predicted_*`.
 
-- [ ] **3. GPT-4o, everything.** Omitting `SUBSET` covers every subset of a
-  dataset; interrupted runs resume, so just rerun on any crash:
+- [ ] **3. GPT-4o, everything.** Runs resume, so just rerun after any crash:
 
   ```bash
-  for ds in ww traceelephant correct-error; do
-    for m in all_at_once step_by_step binary_search; do
-      MODEL=gpt-4o DATASET=$ds bash scripts/${m}.sh
+  for gt in with without; do
+    for ds in ww traceelephant correct-error; do
+      for m in all_at_once step_by_step binary_search; do
+        MODEL=gpt-4o DATASET=$ds GT=$gt bash scripts/prompting/${m}.sh
+      done
     done
   done
   ```
 
-  Cost note: `step_by_step` is the expensive one (one call per step, though it
-  early-stops at the first "Yes"); `correct-error` is the big dataset (2,226
-  trajectories). Consider running `ww` and `traceelephant` first.
+  Cost note: `step_by_step` is the expensive method (one call per step, though
+  it early-stops at the first "Yes") and `correct-error` the big dataset (2,226
+  trajectories). Run `ww` and `traceelephant` first.
 
-- [ ] **4. GPT-5, everything.** Same loop with `MODEL=gpt-5` — its spec already
-  exists in the `-api` configs, and the scripts select the model explicitly, so
-  no config edit is needed.
+- [ ] **4. GPT-5, everything.** Same loop with `MODEL=gpt-5` — its spec is
+  already in the `-api` configs, so no config edit is needed.
 
-- [ ] **5. Check completion & evaluate.** Add the finished models to `models:`
-  in `baselines/prompting/configs/report_<ds>.yaml`, then:
+- [ ] **5. Check completion & evaluate**, once per dataset per setting. Add the
+  finished models to `models:` in `baselines/prompting/configs/report_<ds>.yaml`
+  (shared by both settings), then:
 
   ```bash
-  python -m baselines.prompting.report --config baselines/prompting/configs/report_ww.yaml --check-only
-  python -m baselines.prompting.report --config baselines/prompting/configs/report_ww.yaml
-  # repeat for report_traceelephant.yaml, report_correct-error.yaml
+  for gt in "" "--gt without"; do
+    for ds in ww traceelephant correct-error; do
+      python -m baselines.prompting.report --config baselines/prompting/configs/report_${ds}.yaml $gt --check-only
+      python -m baselines.prompting.report --config baselines/prompting/configs/report_${ds}.yaml $gt
+    done
+  done
   ```
 
-  `--check-only` must show `DONE` (watch `fmt_fail`: raw present but unparsed —
-  try `python -m baselines.prompting.reparse` for all_at_once before rerunning
-  anything). Tables land in `outputs/<ds>/reports/`.
+  Every row must be `DONE`. For unparsed rows (`fmt_fail`), try
+  `python -m baselines.prompting.reparse` before re-running anything. Tables
+  land in `outputs/<ds>/reports/` and `outputs-nogt/<ds>/reports/`.
 
 - [ ] **6. Extend to other models** (optional). Add a spec block to
-  `configs/<ds>-api.yaml` (any OpenAI-compatible provider via `base_url`, e.g.
-  o-series, DeepSeek, OpenRouter models) and repeat steps 3–5 with the new
-  `MODEL=` name. Reasoning models: use `max_completion_tokens` and omit
+  `configs/<ds>-api.yaml` (any OpenAI-compatible provider via `base_url`) and
+  repeat steps 3–5. Reasoning models: use `max_completion_tokens`, omit
   `temperature`/`top_p` (see the `gpt-5` spec).
 
-- [ ] **7. Commit the results.** Outputs are part of the repo:
+- [ ] **7. Commit the results** — outputs are part of the repo:
 
   ```bash
-  git add outputs/ && git commit -m "GPT-4o/GPT-5 prompting results"
+  git add outputs/ outputs-nogt/ && git commit -m "GPT-4o/GPT-5 prompting results, both GT settings"
   ```
+
+### ⚠ Stale `outputs/correct-error/` — re-run before reporting
+
+The committed `outputs/correct-error/` results were produced **before**
+`data/correct-error` was populated with real answers, so their prompts contain
+an empty `The Answer for the problem is: ` line — neither a true with-GT nor a
+true without-GT run (they also predate `gt_in_prompt`, which is absent from
+their `_run.json`). Because resume is file-existence based, step 3 would
+silently keep them. Either re-run that dataset with `OVERWRITE=1`, or move the
+old tree aside first. `ww` and `traceelephant` are unaffected — their corpora
+always carried answers. `data/correct-error-nogt/` preserves the old empty-GT
+corpus if you want to reproduce those runs exactly.
 
 ## Other scripts
 
-- `import_legacy_jsonl.py` — convert a legacy `predictions_method-*.jsonl`
-  tree into the per-trajectory output layout (see its docstring).
-- `build_correct_error_gt.py` — one-off: build `data/correct-error-gt/` by
-  restoring the task answer CORRECT-Error ships empty, re-joining each record to
-  its source benchmark on the row index in `question_id`. Needs `pip install -e
-  ".[data]"`. Already committed, so you only rerun it to audit the join
-  (`--dry-run` prints per-subset agreement and every outlier).
+- `prompting/run_apodex_full.sh`, `prompting/rerun_empty_gpt5.sh` — the
+  collaborator's full-sweep driver and its targeted repair pass. Both are
+  environment-specific (hardcoded `REPO_ROOT`, `.env` and archive paths); read
+  them before reuse.
+- `../misc/build_correct_error_gt.py` — one-off: restore the task answer
+  CORRECT-Error ships empty by re-joining each record to its source benchmark on
+  the row index in `question_id`. Needs `pip install -e ".[data]"`.
+- `../misc/import_legacy_jsonl.py` — convert a legacy
+  `predictions_method-*.jsonl` tree into the per-trajectory output layout.
 - `../baselines/prompting/scripts/run_qwen.sh`, `run_deepseek.sh` — per-model
   wrappers that sweep all datasets × methods for one local model on one GPU.

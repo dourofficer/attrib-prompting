@@ -16,22 +16,21 @@ parity tests.
 | dataset | subsets (size) | answer in prompt? | eval seeds |
 |---|---|---|---|
 | `ww` (Who&When) | algorithm-generated (126), hand-crafted (58) | yes | 1–20 |
-| `correct-error` | arc (304), gaia (50), hotpot (578), math500 (157), mmlu_pro (92), musique (312), wikimqa (733) | no | 1–3 |
-| `correct-error-gt` | same 2,226 trajectories, task answer restored | yes | 1–3 |
+| `correct-error` | arc (304), gaia (50), hotpot (578), math500 (157), mmlu_pro (92), musique (312), wikimqa (733) | yes | 1–3 |
+| `correct-error-nogt` | the same 2,226 trajectories as upstream ships them | no | 1–3 |
 | `traceelephant` | magentic (91), captain (85) | yes | 1–20 |
 
 Corpora live at `data/<dataset>/<subset>/<id>.json`; agent identity is
 `history[t]["role"]`, gold labels are `mistake_agent`/`mistake_step`.
 
-The "answer in prompt?" column is not a flag — it is whether the record carries a
-non-empty `ground_truth`, which the prompt builders interpolate unconditionally.
-CORRECT-Error ships that field empty upstream, so `correct-error-gt` re-joins each
+The "answer in prompt?" column is whether the record carries a non-empty
+`ground_truth`, which the prompt builders interpolate. CORRECT-Error ships that
+field empty upstream, so `data/correct-error` restores it by re-joining each
 record to its source benchmark (`question_id` = `task<N>_<K>`, where N is a row
-index into the source split) and fills it in; see
-[`scripts/build_correct_error_gt.py`](scripts/build_correct_error_gt.py). The two
-corpora share filename stems, so their per-seed splits are identical and
-`correct-error` vs `correct-error-gt` is an exact paired with-GT/without-GT
-comparison.
+index into the source split) — see
+[`misc/build_correct_error_gt.py`](misc/build_correct_error_gt.py);
+`correct-error-nogt` preserves the upstream copy. Every dataset therefore
+supports both GT settings through the `--gt` flag below.
 
 ## Install
 
@@ -49,8 +48,16 @@ One method at a time (see [`scripts/README.md`](scripts/README.md) for all knobs
 
 ```bash
 export OPENAI_API_KEY=sk-...
-MODEL=gpt-4o     DATASET=ww SUBSET=hand-crafted bash scripts/all_at_once.sh
-MODEL=qwen3.5-9b DATASET=traceelephant GPU=0    bash scripts/binary_search.sh   # all subsets
+MODEL=gpt-4o     DATASET=ww SUBSET=hand-crafted bash scripts/prompting/all_at_once.sh
+MODEL=qwen3.5-9b DATASET=traceelephant GPU=0    bash scripts/prompting/binary_search.sh   # all subsets
+```
+
+The CORRECT baseline (3-stage pipeline: schema generation → similarity →
+schema-guided detection; see [`baselines/correct/README.md`](baselines/correct/README.md)):
+
+```bash
+DATASET=ww GPU=0 bash scripts/correct.sh                  # full pipeline, local models
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct.sh
 ```
 
 Or the full grid per dataset:
@@ -91,17 +98,16 @@ vendored comments themselves sanction. Without-GT results mirror into
 collide; `gt_in_prompt` is recorded in `_run.json` and in every output file.
 
 ```bash
-GT=without MODEL=gpt-4o DATASET=ww bash scripts/all_at_once.sh   # or --gt on predict/sweep
+GT=without MODEL=gpt-4o DATASET=ww bash scripts/prompting/all_at_once.sh   # or --gt on predict/sweep
 python -m baselines.prompting.report --config .../report_ww.yaml --gt without
 ```
 
-For CORRECT-Error the flag only removes an empty line (the corpus ships no
-answer) — use the `correct-error-gt` corpus for a real paired comparison.
+Because the two settings differ only by that line and share the corpus (hence
+the same per-seed splits), `outputs/` vs `outputs-nogt/` is an exact paired
+comparison. Note that `outputs/correct-error/` predates the corpus's restored
+answers — see the warning in [`scripts/README.md`](scripts/README.md).
 
 ## Evaluation
-
-The complete GPT-4o/GPT-5 sweep, including raw responses and metrics, is
-published under [`results/`](results/README.md).
 
 Decoupled from inference; mirrors the attribscope protocol (verified
 cell-for-cell over 2,424 table cells):
@@ -119,7 +125,7 @@ with split-independent `*_full` columns over the whole corpus); `--gt without`
 reads and writes the `outputs-nogt/` mirror instead.
 
 Utilities: `python -m baselines.prompting.reparse` re-derives all_at_once
-predictions from stored `raw` (no GPU); `scripts/import_legacy_jsonl.py`
+predictions from stored `raw` (no GPU); `misc/import_legacy_jsonl.py`
 imports legacy `predictions_method-*.jsonl` trees.
 
 ## Layout
@@ -129,9 +135,12 @@ baselines/shared/              method-agnostic infra: common.py helpers,
                                backends/ (vllm|openai|dummy), runner.py (drivers, writer)
 baselines/prompting/           the three methods (verbatim prompts), predict/sweep/report,
                                configs/ (<ds>.yaml vLLM, <ds>-api.yaml APIs), per-model scripts
-baselines/{chief,correct}/     further baselines, not yet adapted (see GUIDE.md)
+baselines/correct/             CORRECT baseline: schemagen → similarity → detection
+baselines/chief/               further baseline, not yet adapted (see GUIDE.md)
 data/                          corpora   ·  vendored/  upstream code, verbatim
-outputs/                       committed results  ·  scripts/  per-method front doors
+outputs/, outputs-nogt/        committed results, with-GT and without-GT
+scripts/prompting/             front doors (one subdir per baseline family)
+misc/                          one-off corpus/format utilities
 tests/                         CPU-only, keyless (pytest)
 ```
 
