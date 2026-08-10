@@ -8,6 +8,30 @@ Volume: 2,586 trajectories in scope (ww 184, traceelephant 176, correct-error
 (2 models × 2 GT settings). Run `ww` and `traceelephant` first; `correct-error`
 is 86% of the cost.
 
+## Progress (2026-08-10)
+
+| | done | remaining |
+|---|---|---|
+| stage 1 schemagen (gpt-4o) | ww/algorithm-generated, 126 | 2,460 trajectories — the other 10 subsets |
+| stage 2 similarity | **all 11 subsets, complete** ✅ | — |
+| stage 3 detection | ww/algorithm-generated × gpt-4o × both GT, 126 + 126 | everything else |
+
+Stage 2 needs no further GPU time. Verified structurally, not just by file
+existence: every trajectory keyed, every ranked list `N-1` long, self excluded,
+all from `../hub/BAAI/bge-m3` at batch 8 / max_length 8192. Re-check anytime:
+
+```bash
+python - <<'EOF'
+import json, pathlib
+for f in sorted(pathlib.Path("artifacts").glob("*/*/similarities/bge-m3.json")):
+    ds, sub = f.parts[1], f.parts[2]
+    ids = {p.stem for p in pathlib.Path(f"data/{ds}/{sub}").glob("*.json") if p.stem.isdigit()}
+    m = json.loads(f.read_text())
+    bad = [k for k, v in m.items() if len(v) != len(ids) - 1 or int(k) in v]
+    print(f"{ds}/{sub}: {'OK' if set(m) == ids and not bad else 'INCOMPLETE'} ({len(ids)})")
+EOF
+```
+
 ## Which machine runs what
 
 | stage | needs | GPU? | API key? |
@@ -39,9 +63,9 @@ Splitting the run that way is fully supported — see step 3.
   pip install -e . && pip install torch transformers
   ```
 
-- [ ] **2. Smoke test** — 10 trajectories, preview then run, both settings.
-  These run all three stages, so on a split setup either do this on the GPU
-  machine's clone for the similarity part, or simply run it after step 3:
+- [x] **2. Smoke test** — done, and then some: ww/algorithm-generated ran to
+  completion for gpt-4o in both GT settings (126 + 126 predictions), on top of
+  its 126 schemata. Kept here as the recipe for a fresh subset:
 
   ```bash
   DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/correct/run.sh
@@ -58,52 +82,48 @@ Splitting the run that way is fully supported — see step 3.
   ```
 
   `schema_cases` must be non-empty (k=10 here) and `gt_in_prompt` `false`;
-  the `outputs/…` twin must show `true`. Note that with only 10 schemata
-  generated so far, retrieval may come up short — that self-corrects after
-  step 3.
+  the `outputs/…` twin must show `true`. On a subset whose schemata are only
+  partly generated, retrieval may come up short — that self-corrects once
+  step 3a finishes the subset.
 
-- [ ] **3. Offline stages, once per dataset** (GT-independent; both settings
-  and both detectors share these artifacts).
-
-  Single machine — both stages in order:
+- [x] **3b. Similarity — complete for all 11 subsets.** No GPU work left; the
+  artifacts are GT-independent and shared by every detector and both settings.
+  Rerunning is a no-op (the stage skips when the output exists). **Commit them
+  — 10 of the 11 are still untracked:**
 
   ```bash
-  for ds in ww traceelephant correct-error; do
-    DATASET=$ds STAGES=schemagen,similarity bash scripts/correct/run.sh
-  done
+  git add artifacts/ && git commit -m "CORRECT: BGE-M3 trajectory similarities, all subsets"
   ```
 
-  Two machines — run these two blocks **in parallel**, they don't depend on
-  each other:
+  If the API machine is a different clone, that commit (or the rsync below) is
+  how it gets them — stage 3 cannot run without them:
 
   ```bash
-  # (3a) API machine — no GPU needed
+  rsync -a --include='*/' --include='similarities/**' --exclude='*' \
+    artifacts/ user@api-host:/path/to/attrib-prompting/artifacts/
+  ```
+
+- [ ] **3a. Schemagen — 2,460 of 2,586 remaining** (ww/algorithm-generated is
+  done). API machine, no GPU:
+
+  ```bash
   for ds in ww traceelephant correct-error; do
     DATASET=$ds STAGES=schemagen bash scripts/correct/run.sh
   done
   # writes artifacts/<ds>/<subset>/schemagen/gpt-4o/<id>.json
-
-  # (3b) GPU machine — no API key needed
-  for ds in ww traceelephant correct-error; do
-    DATASET=$ds STAGES=similarity GPU=0 bash scripts/correct/run.sh
-  done
-  # writes artifacts/<ds>/<subset>/similarities/bge-m3.json (+ .meta.json)
   ```
 
-  Then move the similarity artifacts to the API machine — a few MB for
-  correct-error, kilobytes elsewhere. Via git if both clones share a remote,
-  otherwise directly:
-
-  ```bash
-  # on the GPU machine
-  git add 'artifacts/*/*/similarities/*' && git commit -m "CORRECT: BGE-M3 similarities" && git push
-  # or: rsync -a --include='*/' --include='similarities/**' --exclude='*' artifacts/ user@api-host:/path/to/attrib-prompting/artifacts/
-  ```
+  Finished subsets are skipped (`schemagen complete: …`), so this is safe to
+  rerun; `ww` costs 58 calls, then traceelephant 176, then correct-error 2,226.
 
   Schemata come from `schema_model: gpt-4o` in every config — one generator,
-  both detectors, as the paper intends. (To use GPT-5 schemata instead, set
-  `schema_model: gpt-5` and rerun 3a; results then land in a separate
-  `<subset>/schemagen/gpt-5/` tree.)
+  both detectors, which is how the paper does it (Appendix A.3: *"we first
+  generate all the error schemata using GPT-5 model"*; §5.2 / Fig. 4b treats
+  the generator as its own axis). **Note the paper used GPT-5, not GPT-4o** —
+  to match it, set `schema_model: gpt-5` in the three `-api.yaml` *before*
+  running this step; schemata then land in a separate
+  `<subset>/schemagen/gpt-5/` tree and the 126 gpt-4o ones become a side
+  experiment. Decide before spending 2,460 calls.
 
 - [ ] **4. Detection — the full grid.** `MODEL` omitted ⇒ every model in the
   config (`gpt-4o`, `gpt-5`):
@@ -117,10 +137,14 @@ Splitting the run that way is fully supported — see step 3.
   ```
 
   `without` is the paper setting and writes to `outputs-nogt/`; `with` adds the
-  answer line and writes to `outputs/`. On the API machine, both stage-1 and
-  stage-2 artifacts must be present — if either is missing, `predict` exits
-  with the exact command that produces it rather than running a degraded
-  prompt.
+  answer line and writes to `outputs/`. Already-done work is skipped, so
+  ww/algorithm-generated × gpt-4o costs nothing here. Both stage-1 and stage-2
+  artifacts must be present on the machine running this — if either is missing,
+  `predict` exits with the exact command that produces it rather than running a
+  degraded prompt.
+
+  A subset whose schemata are incomplete will still run, silently retrieving
+  fewer than k. Finish 3a for a subset before detecting on it.
 
 - [ ] **5. Check completion, then evaluate** — both settings, per dataset:
 
