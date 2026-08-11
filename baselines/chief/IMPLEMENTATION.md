@@ -4,15 +4,55 @@ Reference: `vendored/CHIEF/CHIEF.py` (the authors' code) and
 `vendored/CHIEF/chief.pdf` (the paper). **The code is the reference**, not the
 paper — see "Where the code differs from the paper" below.
 
+## The one prompt deviation: the 0-index sentence
+
+Every stage prompt gains one sentence, appended to the existing count sentence:
+
+```
+There are total 29 steps, each entry provides an agent's output. Steps are indexed from 0, so the first entry is step 0.
+```
+
+`--step-hint off` (or `step_hint: false` in a config) removes it and restores
+the vendored bytes; `tests/test_chief_parity.py` asserts that deleting this
+sentence from the default prompt reproduces the vendored bytes character for
+character, in all six stages.
+
+**Why.** The vendored prompts state only how *many* steps there are, never where
+the numbering starts. Stages 5 and 6 — the ones that produce the prediction —
+say merely `step_id: <integer id in conversation>` and `Step Number: (a single
+integer step id)`. The convention leaks only through two incidental format
+examples in stages 1–2 (`like 0-2`, `[0, 1, 2]`), which govern subtask ranges,
+not the answer. The vendored code got away with this because the original
+Who&When hand-crafted files carry a per-turn `step` field — `'step0'`,
+`'step1'`, … — and the prompt dumps the history with `str()`, so the model reads
+the convention off the data. This repo's corpus has no such field, so nothing
+tells the model where counting starts, and it counts from 1.
+
+**Evidence.** On ww/hand-crafted with gpt-4o, trajectory 1 (gold `WebSurfer` @
+12): the vendored prompt yielded `WebSurfer` @ **13**, and index 13 is
+`Orchestrator` while index 12 is `WebSurfer` — the model meant the 13th turn.
+With the sentence added it answers **12**, agent and step both correct.
+
+**Why it names no index.** A first draft ended "…and the last is step {n-1}".
+On an 86-turn trajectory the model then answered exactly 85 — the number the
+sentence had just supplied. A stated index acts as an anchor, not merely a
+definition, so the shipped wording gives only the starting point.
+
+This is the only place where the prompts depart from the vendored bytes. It is
+a deliberate, flagged, tested exception to the repo's faithfulness rule, taken
+because the alternative is measuring a systematic off-by-one instead of the
+method.
+
 ## Faithfulness notes (the details that bite)
 
-- **All six prompts are byte-identical to the vendored ones.**
-  `tests/test_chief_parity.py` loads `vendored/CHIEF/CHIEF.py`, monkeypatches its
-  `call_model` to capture what each `stepN_*` builds, and asserts equality
-  against `stages.build_stepN` — plus deep-equality of every parsed structure.
-  The one prompt that can deviate is stage 1 with retrieval switched off
-  (`rag.kb: []`), which drops the retrieved-example section; the shipped configs
-  never do that.
+- **All six prompts are byte-identical to the vendored ones** with
+  `--step-hint off`; with the default `on` they differ by exactly the sentence
+  above and nothing else. `tests/test_chief_parity.py` loads
+  `vendored/CHIEF/CHIEF.py`, monkeypatches its `call_model` to capture what each
+  `stepN_*` builds, and asserts equality against `stages.build_stepN` — plus
+  deep-equality of every parsed structure. Stage 1 also deviates if retrieval is
+  switched off (`rag.kb: []`), which drops the retrieved-example section; the
+  shipped configs never do that.
 - **Retrieval keeps the vendored off-by-one.** `rag_search.py:65` returns
   `combined_sorted[1:top_k]` — it *discards the best hit*. At the vendored
   `top_k=2` that means exactly one injected exemplar, the runner-up. Almost

@@ -119,6 +119,31 @@ def test_gt_flag_reaches_the_prompts():
         assert seen is expected
 
 
+def test_step_hint_reaches_every_stage():
+    """The 0-index sentence goes into all six prompts, and --step-hint off drops it."""
+    from baselines.shared.backends import get_backend
+    from baselines.shared.runner import run_batched
+    from baselines.chief.methods import chief_program
+
+    record = {"id": "1", "history": [{"role": "A", "content": "x"}] * 4,
+              "question": "q", "ground_truth": "gt"}
+    sentence = "Steps are indexed from 0, so the first entry is step 0."
+    for include, expected in ((True, 6), (False, 0)):
+        backend = get_backend("dummy")
+        run_batched([(record, chief_program(record, include_step_hint=include))],
+                    backend, lambda key, pred: None)
+        hits = sum(1 for msgs in backend.calls if sentence in msgs[-1]["content"])
+        assert hits == expected
+
+
+def test_step_hint_off_via_cli(tmp_path):
+    data = toy_data_dir(tmp_path)
+    out = tmp_path / "out" / "dummy"
+    _predict(data, out, "--step-hint", "off")
+    run_cfg = json.loads((out / "chief" / "_run.json").read_text())
+    assert run_cfg["step_hint_in_prompt"] is False
+
+
 def test_rag_text_is_injected_verbatim():
     from baselines.shared.backends import get_backend
     from baselines.shared.runner import run_batched
@@ -165,6 +190,7 @@ def test_predict_e2e_and_resume(tmp_path):
     run_cfg = json.loads((mdir / "_run.json").read_text())
     assert run_cfg["method"] == "chief" and run_cfg["n_total"] == 3
     assert run_cfg["gt_in_prompt"] is True and run_cfg["n_with_rag"] == 3
+    assert run_cfg["step_hint_in_prompt"] is True
     assert "request_params" in run_cfg
 
     # Resume: delete one file, only it re-runs.

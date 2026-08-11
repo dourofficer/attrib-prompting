@@ -3,14 +3,18 @@
 Every prompt string and every regex here is lifted **verbatim** from the vendored
 ``vendored/CHIEF/CHIEF.py`` (functions ``step1_generate_subtasks`` …
 ``step6_predict_final_answer`` and ``build_dag_graph``); ``tests/test_chief_parity.py``
-drives that file directly and asserts the bytes still match. Two changes only,
-both structural:
+drives that file directly and asserts the bytes still match. Three changes:
 
   * each vendored ``stepN`` interleaved *build prompt → call LLM → parse*; here
     the two halves are side-effect-free functions, so ``methods.chief_program``
     can yield the prompt and resume with the response;
   * ``include_gt`` (GUIDE.md "GT settings") makes the answer sentence optional.
     It defaults to ``True`` — the vendored bytes carry the answer.
+  * ``include_step_hint`` adds one sentence stating that steps are indexed from
+    0. This is the **one deliberate wording change** in the whole file; it
+    defaults to ``True``, and ``False`` restores the vendored bytes. See
+    IMPLEMENTATION.md for why, and ``tests/test_chief_parity.py`` for the proof
+    that it is the only difference.
 """
 from __future__ import annotations
 
@@ -43,6 +47,26 @@ def _gt_line(ground_truth, include_gt: bool) -> str:
     if not include_gt:
         return "\n"
     return f"The correct answer for the problem is: {ground_truth}\n\n"
+
+
+def _step_hint(n_steps: int, include: bool) -> str:
+    """Spell out the 0-based step convention the vendored prompts leave implicit.
+
+    The vendored text states only how *many* steps there are, never where the
+    numbering starts, and this repo's corpus — unlike the original Who&When
+    files — carries no per-turn ``step`` label for the model to read off. Left
+    implicit, models count from 1 and predictions land one past the gold index.
+
+    It names no specific index on purpose. An earlier draft ended "...and the
+    last is step {n-1}", and a model promptly answered exactly that number —
+    a stated index is an anchor, not just a definition. Appended to the existing
+    sentence rather than added as a new paragraph, so it is the smallest
+    possible edit; ``include=False`` restores the vendored bytes exactly (see
+    IMPLEMENTATION.md).
+    """
+    if not include:
+        return "\n\n"
+    return " Steps are indexed from 0, so the first entry is step 0.\n\n"
 
 
 def normalize_agent(x):
@@ -83,7 +107,8 @@ def format_rag_blocks(rag_results) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_step1(history_text, question, ground_truth, rag_text=None,
-                include_gt: bool = True) -> str:
+                include_gt: bool = True,
+                include_step_hint: bool = True) -> str:
     """Build the stage-1 prompt.
 
     When ``rag_text`` is a string (RAG enabled) the prompt is byte-identical to the
@@ -91,13 +116,15 @@ def build_step1(history_text, question, ground_truth, rag_text=None,
     the retrieved-example section is omitted.
     """
     gt_line = _gt_line(ground_truth, include_gt)
+    step_hint = _step_hint(len(history_text), include_step_hint)
     head = (
         "You are an AI assistant tasked with analyzing a multi-agent conversation history when solving a real-world problem.\n"
         f"The problem is: {question}\n"
         f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
-        + f"\n\nThere are total {len(history_text)} steps, each entry provides the agent output and its role.\n\n"
+        + f"\n\nThere are total {len(history_text)} steps, each entry provides the agent output and its role."
+        + step_hint
     )
     if rag_text is not None:
         middle = (
@@ -199,17 +226,20 @@ def parse_step1(result_text):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_step2(history_text, question, ground_truth, subtasks,
-                include_gt: bool = True) -> str:
+                include_gt: bool = True,
+                include_step_hint: bool = True) -> str:
     """Verbatim from CHIEF.py:189-233."""
     gt_line = _gt_line(ground_truth, include_gt)
+    step_hint = _step_hint(len(history_text), include_step_hint)
     return (
         "You are an expert in causal reasoning and multi-agent task analysis.\n"
         f"The problem is: {question}\n"
         f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
-        + f"\n\nThere are total {len(history_text)} steps.\n\n"
-        "Here are the subtasks with their IDs (in execution order):\n"
+        + f"\n\nThere are total {len(history_text)} steps."
+        + step_hint
+        + "Here are the subtasks with their IDs (in execution order):\n"
         + str(subtasks)
         + "\n\nNow, construct causal edges ONLY for consecutive subtask pairs: (S1->S2), (S2->S3), ...\n"
         "For each consecutive pair (Si, S(i+1)), you MUST output ONE block in the following exact format:\n\n"
@@ -422,9 +452,11 @@ def parse_step2(raw):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_step3(history_text, question, ground_truth, subtasks,
-                include_gt: bool = True) -> str:
+                include_gt: bool = True,
+                include_step_hint: bool = True) -> str:
     """Verbatim from CHIEF.py:402-448."""
     gt_line = _gt_line(ground_truth, include_gt)
+    step_hint = _step_hint(len(history_text), include_step_hint)
     subtask_lines = []
     for s in subtasks:
         subtask_lines.append(
@@ -438,8 +470,9 @@ def build_step3(history_text, question, ground_truth, subtasks,
         f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
-        + f"\n\nThere are total {len(history_text)} steps, each entry provides the output of the agent and its role.\n\n"
-        "Below are the subtasks :\n"
+        + f"\n\nThere are total {len(history_text)} steps, each entry provides the output of the agent and its role."
+        + step_hint
+        + "Below are the subtasks :\n"
         + str(subtasks_text)
         + "\n\nYour job:\n"
           "1. For each subtask, identify the agents that actively perform actions within its step_range.\n"
@@ -600,9 +633,11 @@ def parse_step3(raw, subtasks):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_step4(history_text, question, ground_truth, subtasks_agents,
-                include_gt: bool = True) -> str:
+                include_gt: bool = True,
+                include_step_hint: bool = True) -> str:
     """Verbatim from CHIEF.py:569-614."""
     gt_line = _gt_line(ground_truth, include_gt)
+    step_hint = _step_hint(len(history_text), include_step_hint)
     subtask_agent_lines = []
     for s in subtasks_agents:
         agent_names = [a.get("agent") or a.get("Agent") or "" for a in s.get("agents", [])]
@@ -619,8 +654,9 @@ def build_step4(history_text, question, ground_truth, subtasks_agents,
         f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
-        + f"\n\nThere are total {len(history_text)} steps, each entry provides the output of the agent and its role.\n\n"
-        "Below are the subtasks with their agents:\n"
+        + f"\n\nThere are total {len(history_text)} steps, each entry provides the output of the agent and its role."
+        + step_hint
+        + "Below are the subtasks with their agents:\n"
         + str(subtasks_agents_text)
         + "\n\nYour job:\n"
           "- For each subtask, construct causal edges BETWEEN agents inside this subtask only.\n"
@@ -756,17 +792,20 @@ def build_dag_graph(subtasks_agents, subtasks_edges, all_subtask_edges):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_step5(history_text, question, ground_truth, dag_graph,
-                include_gt: bool = True) -> str:
+                include_gt: bool = True,
+                include_step_hint: bool = True) -> str:
     """Verbatim from CHIEF.py:703-760."""
     gt_line = _gt_line(ground_truth, include_gt)
+    step_hint = _step_hint(len(history_text), include_step_hint)
     return (
         "You are an AI assistant tasked with analyzing a multi-agent conversation solving a real-world problem.\n"
         f"The problem is: {question}\n"
         f"{gt_line}"
         "Here is the conversation:\n"
         + str(history_text)
-        + f"\n\nThere are total {len(history_text)} steps, each entry provides an agent's output.\n\n"
-        "Here is the graph describing the reasoning structure:\n"
+        + f"\n\nThere are total {len(history_text)} steps, each entry provides an agent's output."
+        + step_hint
+        + "Here is the graph describing the reasoning structure:\n"
         + str(dag_graph)
         + "\n\nYour job:\n"
         "1. Review the entire reasoning trace holistically.\n"
@@ -999,17 +1038,20 @@ def parse_step5(response):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_step6(history_text, question, ground_truth, candidate_set, dag_graph,
-                include_gt: bool = True) -> str:
+                include_gt: bool = True,
+                include_step_hint: bool = True) -> str:
     """Verbatim from CHIEF.py:937-970."""
     gt_line = _gt_line(ground_truth, include_gt)
+    step_hint = _step_hint(len(history_text), include_step_hint)
     return (
         "You are an AI assistant tasked with analyzing a multi-agent conversation solving a real-world problem.\n"
         f"The problem is: {question}\n"
         f"{gt_line}"
         "Here is the multi-agent conversation:\n"
         + str(history_text)
-        + f"\n\nThere are total {len(history_text)} steps, each entry provides an agent's output.\n\n"
-        "Here is the structured candidate_set generated by a previous analysis stage.\n"
+        + f"\n\nThere are total {len(history_text)} steps, each entry provides an agent's output."
+        + step_hint
+        + "Here is the structured candidate_set generated by a previous analysis stage.\n"
         + str(candidate_set)
         + "\n\nHere is the graph:\n"
         + str(dag_graph)

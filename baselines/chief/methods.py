@@ -63,7 +63,8 @@ Program = Generator[list[list[dict]], list[str], dict]
 
 
 def chief_program(record: dict, *, rag_text: str | None = None,
-                  include_gt: bool = True) -> Program:
+                  include_gt: bool = True,
+                  include_step_hint: bool = True) -> Program:
     """Yield each stage's messages in turn; return the output doc.
 
     ``rag_text`` is the precomputed stage-1 exemplar block (see
@@ -93,29 +94,29 @@ def chief_program(record: dict, *, rag_text: str | None = None,
 
     try:
         raw1 = yield from ask(1, build_step1(history, question, ground_truth,
-                                             rag_text, include_gt))
+                                             rag_text, include_gt, include_step_hint))
         subtasks = parse_step1(raw1)
 
         raw2 = yield from ask(2, build_step2(history, question, ground_truth,
-                                             subtasks, include_gt))
+                                             subtasks, include_gt, include_step_hint))
         edges = parse_step2(raw2)
 
         raw3 = yield from ask(3, build_step3(history, question, ground_truth,
-                                             subtasks, include_gt))
+                                             subtasks, include_gt, include_step_hint))
         subtasks_agents = parse_step3(raw3, subtasks)
 
         raw4 = yield from ask(4, build_step4(history, question, ground_truth,
-                                             subtasks_agents, include_gt))
+                                             subtasks_agents, include_gt, include_step_hint))
         agent_edges = parse_step4(raw4)
 
         dag = build_dag_graph(subtasks_agents, edges["subtasks_edges"], agent_edges)
 
         raw5 = yield from ask(5, build_step5(history, question, ground_truth,
-                                             dag, include_gt))
+                                             dag, include_gt, include_step_hint))
         candidate_set = parse_step5(raw5)
 
         raw6 = yield from ask(6, build_step6(history, question, ground_truth,
-                                             candidate_set, dag, include_gt))
+                                             candidate_set, dag, include_gt, include_step_hint))
         final = parse_step6(raw6)
     except Exception as exc:  # noqa: BLE001 — a malformed stage output, not a backend error
         # Backend errors never land here: the runner calls generate() outside the

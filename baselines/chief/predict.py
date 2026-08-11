@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
                    help="'with' keeps the vendored 'The correct answer for the problem "
                         "is:' sentence in all six prompts (default — the vendored "
                         "bytes). 'without' drops it.")
+    p.add_argument("--step-hint", default="on", choices=["on", "off"],
+                   help="'on' (default) adds one sentence to each stage prompt "
+                        "stating that steps are indexed from 0. 'off' restores the "
+                        "vendored bytes, which leave the convention implicit and "
+                        "make models answer 1-based. See IMPLEMENTATION.md.")
     p.add_argument("--rag-texts", default=None,
                    help="Stage-1 exemplar artifact: "
                         "artifacts/<ds>/<subset>/rag/<embed_model>.json. Omit to run "
@@ -107,6 +112,7 @@ def main() -> None:
     model_name = args.model_name or args.model
     method_dir = args.method_dir or METHOD
     include_gt = args.gt == "with"
+    include_step_hint = args.step_hint == "on"
 
     writer = OutputWriter(Path(args.output) / method_dir, overwrite=args.overwrite)
     done = writer.done_ids()
@@ -138,6 +144,7 @@ def main() -> None:
         "backend": args.backend,
         "request_params": backend.request_params,
         "gt_in_prompt": include_gt,
+        "step_hint_in_prompt": include_step_hint,
         "rag_texts": args.rag_texts,
         "n_with_rag": len(rag_texts),
         "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -166,7 +173,8 @@ def main() -> None:
         })
 
     programs = [(r, chief_program(r, rag_text=rag_texts.get(r["id"]),
-                                  include_gt=include_gt))
+                                  include_gt=include_gt,
+                                  include_step_hint=include_step_hint))
                 for r in remaining]
 
     t0 = time.perf_counter()

@@ -23,7 +23,7 @@ trajectory-runs → ~35,400 LLM calls** (six per trajectory). Run `ww` and
 | stage | state |
 |---|---|
 | 1. ragprep | ✅ all 11 subsets in `artifacts/<ds>/<subset>/rag/all-MiniLM-L6-v2.json`, committed |
-| 2. predict | 2 / 5,892 — ww/hand-crafted × gpt-4o × with-GT, ids 1–2 (the smoke test) |
+| 2. predict | 0 / 5,892 — the 2 smoke-test files in `outputs/ww/hand-crafted/gpt-4o/chief/` predate the step-hint prompt; **delete that directory** so they re-run |
 | report | not started |
 
 ---
@@ -32,7 +32,8 @@ trajectory-runs → ~35,400 LLM calls** (six per trajectory). Run `ww` and
   `export OPENAI_API_KEY=sk-...`
 
 - [x] **2. Smoke test** — ww/hand-crafted × gpt-4o, 2 trajectories; all six
-  stages returned parseable output. Recipe for a fresh subset:
+  stages returned parseable output, and with the step hint trajectory 1 predicts
+  `WebSurfer @ 12` against gold `WebSurfer @ 12`. Recipe for a fresh subset:
 
   ```bash
   DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o END_IDX=2 DRY_RUN=1 bash scripts/chief/run.sh
@@ -81,35 +82,11 @@ trajectory-runs → ~35,400 LLM calls** (six per trajectory). Run `ww` and
   done
   ```
 
-- [ ] **7. Quantify the step-index offset** (see below), then commit:
+- [ ] **7. Commit** — results are part of the repo:
 
   ```bash
   git add outputs/ outputs-nogt/ && git commit -m "CHIEF: GPT-4o/GPT-5 results, both GT settings"
   ```
-
-## The step-index caveat — measure it, don't fix it
-
-CHIEF's prompts never say steps are 0-based (they say only "there are total N
-steps"), and our corpus lacks the `step` field the vendored Who&When data
-carried, so the model has no anchor. In the smoke test it answered `WebSurfer` /
-step 13 where index 12 is `WebSurfer` and index 13 is `Orchestrator` — it meant
-the 13th turn. 1 of those 2 predictions hits gold at step−1.
-
-Report the number beside the tables. Do **not** shift the metrics: `GUIDE.md`
-forbids ±1 tolerance and every baseline is scored the same way.
-
-```bash
-python - <<'PY'
-import glob, json
-off = tot = 0
-for f in glob.glob("outputs*/*/*/*/chief/[0-9]*.json"):
-    d = json.load(open(f))
-    p, g = d["predicted_step"], d["gold_step"]
-    if p is None or g in (None, ""): continue
-    tot += 1; off += (p - 1 == int(g))
-print(f"{off}/{tot} predictions hit gold at step-1 (a 1-based reading)")
-PY
-```
 
 ## Watch-outs
 

@@ -248,7 +248,8 @@ def test_rag_block_formatting_matches(vendored, drive, rag_text):
 def test_step1_parity(vendored, drive, rag_text):
     prompt, parsed = drive(vendored.step1_generate_subtasks, OUT1,
                            HISTORY, QUESTION, GROUND_TRUTH)
-    assert stages.build_step1(HISTORY, QUESTION, GROUND_TRUTH, rag_text) == prompt
+    assert stages.build_step1(HISTORY, QUESTION, GROUND_TRUTH, rag_text,
+                              include_step_hint=False) == prompt
     assert stages.parse_step1(OUT1) == parsed
     assert len(parsed) == 2  # the canned output really did parse
 
@@ -257,7 +258,8 @@ def test_step2_parity(vendored, drive):
     subtasks = stages.parse_step1(OUT1)
     prompt, parsed = drive(vendored.step2_generate_subtasks_edges, OUT2,
                            HISTORY, QUESTION, GROUND_TRUTH, subtasks)
-    assert stages.build_step2(HISTORY, QUESTION, GROUND_TRUTH, subtasks) == prompt
+    assert stages.build_step2(HISTORY, QUESTION, GROUND_TRUTH, subtasks,
+                              include_step_hint=False) == prompt
     assert stages.parse_step2(OUT2) == parsed
     assert parsed["subtasks_edges"]
 
@@ -266,7 +268,8 @@ def test_step3_parity(vendored, drive):
     subtasks = stages.parse_step1(OUT1)
     prompt, parsed = drive(vendored.step3_generate_agents, OUT3,
                            HISTORY, QUESTION, GROUND_TRUTH, subtasks)
-    assert stages.build_step3(HISTORY, QUESTION, GROUND_TRUTH, subtasks) == prompt
+    assert stages.build_step3(HISTORY, QUESTION, GROUND_TRUTH, subtasks,
+                              include_step_hint=False) == prompt
     assert stages.parse_step3(OUT3, subtasks) == parsed
     assert any(s["agents"] for s in parsed)
 
@@ -276,7 +279,8 @@ def test_step4_parity(vendored, drive):
     subtasks_agents = stages.parse_step3(OUT3, subtasks)
     prompt, parsed = drive(vendored.step4_generate_agents_edges, OUT4,
                            HISTORY, QUESTION, GROUND_TRUTH, subtasks_agents)
-    assert stages.build_step4(HISTORY, QUESTION, GROUND_TRUTH, subtasks_agents) == prompt
+    assert stages.build_step4(HISTORY, QUESTION, GROUND_TRUTH, subtasks_agents,
+                              include_step_hint=False) == prompt
     assert stages.parse_step4(OUT4) == parsed
     assert parsed
 
@@ -302,7 +306,8 @@ def test_step5_parity(vendored, drive):
     dag = _dag()
     prompt, parsed = drive(vendored.step5_predict_candidate_set, OUT5,
                            HISTORY, QUESTION, GROUND_TRUTH, dag)
-    assert stages.build_step5(HISTORY, QUESTION, GROUND_TRUTH, dag) == prompt
+    assert stages.build_step5(HISTORY, QUESTION, GROUND_TRUTH, dag,
+                              include_step_hint=False) == prompt
     assert stages.parse_step5(OUT5) == parsed
     assert len(parsed["candidate_error_steps"]) == 2
 
@@ -321,17 +326,16 @@ def test_step6_parity(vendored, monkeypatch):
     parsed = vendored.step6_predict_final_answer(
         HISTORY, QUESTION, GROUND_TRUTH, candidate_set, dag)
 
-    assert stages.build_step6(HISTORY, QUESTION, GROUND_TRUTH,
-                              candidate_set, dag) == seen["prompt"]
+    assert stages.build_step6(HISTORY, QUESTION, GROUND_TRUTH, candidate_set, dag,
+                              include_step_hint=False) == seen["prompt"]
     assert stages.parse_step6(OUT6) == parsed
     # The vendored split("(") cleanup is load-bearing on hand-crafted roles.
     assert parsed["final"]["mistake_agent"] == "WebSurfer"
     assert parsed["final"]["mistake_step"] == 1
 
 
-def test_without_gt_drops_only_the_answer(rag_text):
-    """--gt without removes the answer sentence and nothing else."""
-    builders = [
+def _all_builders(rag_text):
+    return [
         (stages.build_step1, (HISTORY, QUESTION, GROUND_TRUTH, rag_text)),
         (stages.build_step2, (HISTORY, QUESTION, GROUND_TRUTH, [])),
         (stages.build_step3, (HISTORY, QUESTION, GROUND_TRUTH, [])),
@@ -339,8 +343,30 @@ def test_without_gt_drops_only_the_answer(rag_text):
         (stages.build_step5, (HISTORY, QUESTION, GROUND_TRUTH, {})),
         (stages.build_step6, (HISTORY, QUESTION, GROUND_TRUTH, {}, {})),
     ]
+
+
+def test_step_hint_is_on_by_default_and_is_the_only_deviation(rag_text):
+    """The 0-index sentence is our one prompt deviation — and it is exactly one.
+
+    Deleting it from the default prompt must reproduce the vendored bytes
+    character for character, in every stage.
+    """
+    sentence = " Steps are indexed from 0, so the first entry is step 0."
+    for build, args in _all_builders(rag_text):
+        default = build(*args)
+        vendored_bytes = build(*args, include_step_hint=False)
+        assert default.count(sentence) == 1, build.__name__
+        assert default.replace(sentence, "", 1) == vendored_bytes, build.__name__
+        # It rides on the existing count sentence rather than adding a paragraph.
+        assert "steps." + sentence + "\n\n" in default \
+            or "its role." + sentence + "\n\n" in default \
+            or "agent's output." + sentence + "\n\n" in default, build.__name__
+
+
+def test_without_gt_drops_only_the_answer(rag_text):
+    """--gt without removes the answer sentence and nothing else."""
     sentence = f"The correct answer for the problem is: {GROUND_TRUTH}\n"
-    for build, args in builders:
+    for build, args in _all_builders(rag_text):
         with_gt = build(*args)
         without = build(*args, include_gt=False)
         assert sentence in with_gt

@@ -67,6 +67,16 @@ during the six calls, so the machine holding the API key needs neither
 extra), every rerun injects byte-identical exemplars, and the artifact is
 committed so nobody recomputes it.
 
+## The one prompt deviation
+
+Each stage prompt gains a single sentence — *"Steps are indexed from 0, so the
+first entry is step 0."* — because the vendored prompts never say where the
+numbering starts, and this corpus lacks the per-turn `step` labels the original
+Who&When files carried. Without it models count from 1 and every prediction
+lands one past the gold index. `--step-hint off` restores the vendored bytes,
+and the parity test proves that sentence is the only difference.
+[`IMPLEMENTATION.md`](IMPLEMENTATION.md) has the evidence.
+
 One quirk worth knowing before reading the artifact: the vendored search returns
 `combined_sorted[1:top_k]`, **dropping the best hit**, so the default `top_k: 2`
 injects exactly one exemplar — the runner-up. It is reproduced, not fixed; see

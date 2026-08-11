@@ -119,6 +119,8 @@ def main() -> None:
             ]
             if rag_kbs:
                 argv += ["--rag-texts", str(rag_path)]
+            if cfg.get("step_hint") is False:      # default on; see IMPLEMENTATION.md
+                argv += ["--step-hint", "off"]
             argv += _common_argv(cfg)
             run("baselines.chief.predict", argv, args.dry_run)
 
