@@ -78,9 +78,27 @@ method.
   prediction, which the report counts as wrong.
 - **Indexing is 0-based** — the step index is the position in `history`. No ±1
   shifting anywhere.
-- **Sampling.** The vendored `call_model` pins `temperature=0.0` and sets no
-  token cap. Local runs are greedy (`temperature 0.0 / top_p 1.0`); API specs
-  send exactly their declared `params`.
+- **Sampling comes from the code, because the paper reports almost none of it.**
+  §5.4 gives only Python 3.11, DeepSeek-V3.2 (thinking) as the default backbone,
+  and the hardware — no temperature, top_p, token cap or seed anywhere. The one
+  model-level knob it does report is the thinking level, in Table 3's
+  parentheses: GPT-5.2 *medium*, Claude-4.5-Sonnet *standard thinking*,
+  Gemini-3-Flash *medium*. §5.3 adds that every number is the mean of three
+  independent runs. **GPT-4o is never evaluated in the paper**, so there is no
+  reported setting for it at all.
+
+  The vendored `call_llm` therefore is the reference: it sends `model`,
+  `messages` and `temperature=0.0`, and nothing else — no token cap, no `top_p`,
+  no seed. Local runs are greedy to match (`temperature 0.0 / top_p 1.0`). API
+  specs send exactly their declared `params`, which `_run.json` records
+  verbatim: gpt-4o carries `temperature: 0.0` (omitting it would silently use
+  the API default of 1.0 and make the six-stage chain non-reproducible), gpt-5
+  omits temperature because reasoning models reject a non-default value. The
+  token caps (`max_tokens` / `max_completion_tokens`) are ours — the vendored
+  code sets none — kept as a runaway guard. gpt-5's is the larger of the two
+  because reasoning tokens are drawn from the same budget, and a budget spent
+  thinking returns empty content that the lenient parsers turn into a *silent*
+  null prediction rather than an error.
 
 ## Deliberate deviations (all infrastructure-level; prompt bytes unchanged)
 

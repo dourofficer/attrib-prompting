@@ -100,6 +100,9 @@ trajectory-runs → ~35,400 LLM calls** (six per trajectory). Run `ww` and
   unparseable is written with a null prediction and `raw` starting
   `[chief-error]` — that scores as wrong and will not re-run; delete the file to
   retry it.
-- **Params are per-model and recorded.** gpt-5 sends `reasoning_effort: medium`
-  with `max_completion_tokens`; gpt-4o sends `max_tokens: 8192`. Each
-  `_run.json` logs exactly what was sent.
+- **Params are per-model and recorded.** gpt-4o sends
+  `{max_tokens: 8192, temperature: 0.0}` — the vendored `call_model` value, so
+  runs are greedy and reproducible. gpt-5 sends `{max_completion_tokens: 16384}`
+  and nothing else: reasoning models reject a non-default temperature, and
+  reasoning effort is left at the server default. Each `_run.json` logs exactly
+  what was sent.

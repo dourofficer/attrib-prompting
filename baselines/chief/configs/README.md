@@ -61,9 +61,15 @@ model_specs:
     params: {max_tokens: 8192}
 ```
 
-Reasoning models: use `max_completion_tokens` and omit `temperature`/`top_p`
-(see the `gpt-5` spec). CHIEF's stage parsers are strict regexes over plain
-text, and `strip_think` removes any reasoning block before they run.
+Non-reasoning models should carry `temperature: 0.0` — the value the vendored
+`call_model` sends. Leave it out and the API's own default (1.0) applies, which
+makes a six-call chain non-reproducible.
+
+Reasoning models: use `max_completion_tokens`, omit `temperature`/`top_p` (they
+reject a non-default temperature), and give a larger cap than you would a plain
+model, since reasoning tokens come out of the same budget — see the `gpt-5`
+spec. CHIEF's stage parsers are strict regexes over plain text, and
+`strip_think` removes any reasoning block before they run.
 
 ## Adding local (vLLM) models
 
