@@ -1,0 +1,37 @@
+# CHIEF inference config — Who&When (ww), closed-source API models.
+# Requires the model's API key in the environment (default: OPENAI_API_KEY).
+models:  [gpt-4o, gpt-5]
+subsets: [algorithm-generated, hand-crafted]
+
+data_dir:     data/ww
+outputs_root: outputs/ww
+# Stage-1 artifacts (retrieved exemplars) — never predictions.
+artifacts_root: artifacts/ww
+
+# Vendored setting: every CHIEF stage prompt carries the task answer.
+gt: with
+
+# Stage 1 retrieves a worked example from the committed GAIA + AssistantBench
+# knowledge base. top_k is the vendored value; its [1:top_k] slice drops the best
+# hit, so 2 injects exactly one exemplar (see IMPLEMENTATION.md).
+rag:
+  root:  vendored/CHIEF/rag
+  kb:    [gaia, assistantbench]
+  top_k: 2
+  embed_model: sentence-transformers/all-MiniLM-L6-v2
+
+start_idx: 0
+end_idx:   null
+
+# A spec's `params` are sent to the API verbatim — nothing else is added, and
+# _run.json records exactly what was sent. CHIEF's stage 5 and 6 prompts inline
+# the causal graph on top of the trajectory, so they need a generous budget.
+model_specs:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    params: {max_tokens: 8192}
+  gpt-5:
+    backend: openai
+    model: gpt-5
+    params: {max_completion_tokens: 8192, reasoning_effort: medium}

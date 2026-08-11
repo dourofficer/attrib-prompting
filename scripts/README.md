@@ -1,8 +1,8 @@
 # scripts/
 
 Front doors for running the baselines. One subdirectory per baseline family —
-`prompting/` and `correct/` today; `chief/` gets its own when it is adapted.
-This README stays at `scripts/` and covers all of them.
+`prompting/`, `correct/` and `chief/`. This README stays at `scripts/` and
+covers all of them.
 
 ## prompting/
 
@@ -95,6 +95,52 @@ artifacts/<ds>/<subset>/schemagen/<schema_model>/<id>.json
 artifacts/<ds>/<subset>/similarities/<embed_model>.json
 ```
 
+## chief/
+
+One front door for the whole CHIEF pipeline (exemplar retrieval → six-call
+causal-graph detection; see
+[`baselines/chief/README.md`](../baselines/chief/README.md)):
+
+```bash
+DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/chief/run.sh
+```
+
+Examples:
+
+```bash
+DATASET=ww STAGES=ragprep bash scripts/chief/run.sh                # exemplars only (CPU)
+DATASET=ww bash scripts/chief/run.sh                               # everything in the config
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/chief/run.sh
+DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/chief/run.sh   # preview
+```
+
+Same env knobs as the prompting scripts (`GT`, `GPU`, `START_IDX`/`END_IDX`,
+`DRY_RUN`, `OVERWRITE`, `EXTRA_SET`, `CONFIG`), plus:
+
+| var | meaning |
+|---|---|
+| `MODEL` | optional here — omit to run every model in the config |
+| `STAGES` | comma-list of `ragprep,predict` (default: both) |
+
+Config resolution is the same shape as prompting's, but only the closed-source
+configs ship: `baselines/chief/configs/<DATASET>-api.yaml` (`gpt-4o`, `gpt-5`).
+Add `<DATASET>.yaml` for local vLLM models and the script picks it up —
+[`baselines/chief/configs/README.md`](../baselines/chief/configs/README.md) has
+the template.
+
+Three CHIEF-specific notes. The default GT setting is **`with`** (every vendored
+stage prompt carries the answer), so results land in `outputs/` unless
+`GT=without`. Stage 1 is GT-independent and lives in **`artifacts/`**:
+
+```
+artifacts/<ds>/<subset>/rag/<embed_model>.json
+```
+
+It is committed, so you only rerun it to change the encoder — and only that
+stage needs `pip install -e ".[rag]"` (faiss + sentence-transformers).
+Finally, detection is **six LLM calls per trajectory** with the causal graph
+inlined in the last two; budget roughly 2.5–3× an all-at-once run.
+
 ## I/O — what each operation reads and writes
 
 Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
@@ -107,6 +153,9 @@ Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
 | `… → baselines.correct.schemagen` | `data/<DATASET>/<SUBSET>/<id>.json` (incl. gold labels) | `artifacts/<DATASET>/<SUBSET>/schemagen/<SCHEMA_MODEL>/<id>.json` (+ `_run.json`) |
 | `… → baselines.correct.similarity` | `data/<DATASET>/<SUBSET>/<id>.json`; the BGE-M3 checkpoint | `artifacts/<DATASET>/<SUBSET>/similarities/<EMBED_MODEL>.json` (+ `.meta.json`) |
 | `… → baselines.correct.predict` | the corpus + **both** artifacts above; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (+ `_run.json`) |
+| `scripts/chief/run.sh` | `baselines/chief/configs/<DATASET>[-api].yaml` | nothing itself — execs the 2-stage sweep |
+| `… → baselines.chief.ragprep` | `data/<DATASET>/<SUBSET>/<id>.json` (questions only); `vendored/CHIEF/rag/{index,kb}` | `artifacts/<DATASET>/<SUBSET>/rag/<EMBED_MODEL>.json` (+ `.meta.json`) |
+| `… → baselines.chief.predict` | the corpus + the RAG artifact above; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/chief/<id>.json` (+ `_run.json`), each with all six stage responses in `calls` |
 | `… → baselines.prompting.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing `<gt-root>/…/<id>.json` (resume ledger); `$OPENAI_API_KEY` for API models; `../hub/<checkpoint>` for vLLM | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (one per trajectory, atomic) and `…/<METHOD>/_run.json` (run snapshot) |
 | `baselines.prompting.report --config configs/report_<ds>.yaml [--gt without]` | `data/<ds>/<subset>/*.json` (split universe only); `<gt-root>/<ds>/<subset>/<model>/<method>/[0-9]*.json` | `<gt-root>/<ds>/reports/completion_status.tsv`, `…/reports/<model>/<subset>/comparison_by_seed.tsv`, `…/reports/summary_mean_over_seeds.tsv` |
 

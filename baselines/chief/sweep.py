@@ -1,87 +1,59 @@
-"""Sweep driver for the CHIEF baseline.
+"""Sweep driver for the CHIEF baseline — both stages.
 
-Grid over models × subsets; shells out one child process per combo to
-``baselines.chief.predict`` so each heavy vLLM load happens once. Mirrors the
-shared sweep interface used across the repo:
+Per subset it runs, in order, each as a shelled-out idempotent child process:
 
-    python -m baselines.chief.sweep --config <yaml> [--set k.sub=v ...] [--dry-run]
+  1. ``baselines.chief.ragprep``  — once, detector-independent (the child skips
+     if the artifact exists);
+  2. ``baselines.chief.predict``  — grid over models.
+
+    python -m baselines.chief.sweep --config <yaml> \\
+        [--set k.sub=v ...] [--gt with|without] [--stages predict] [--dry-run]
+
+Config schema = the prompting sweep's (``model_specs`` etc.) plus:
+
+  rag:
+    root:   vendored/CHIEF/rag       # index/ + kb/ of the committed knowledge base
+    kb:     [gaia, assistantbench]   # which indices to search
+    top_k:  2                        # vendored; the [1:top_k] slice yields 1 exemplar
+    embed_model: sentence-transformers/all-MiniLM-L6-v2
+  artifacts_root: artifacts/ww       # stage-1 artifacts (default: outputs_root with
+                                     # its root component swapped to artifacts/)
+
+``outputs_root`` holds predictions only. Retrieval writes to ``artifacts_root``,
+stage first, then the encoder that produced it::
+
+    artifacts/<ds>/<subset>/rag/<embed_model>.json
+
+GT axis (GUIDE.md "GT settings"): every vendored CHIEF prompt carries the task
+answer, so this sweep defaults to ``--gt with`` — the vendored setting — writing
+under ``outputs/``. ``--gt without`` drops the answer sentence and mirrors into
+``outputs-nogt/``. The RAG artifact is keyed by the question alone, so one
+``artifacts/`` root serves both settings.
+
+--dry-run prints every stage's command unconditionally (no completeness checks),
+so it works on a clean checkout without models or artifacts.
 """
 from __future__ import annotations
 
 import argparse
-import shlex
-import subprocess
-import sys
 from pathlib import Path
 
-import yaml
-from rich.console import Console
+from baselines.shared.common import artifacts_root, nogt_root
+from baselines.prompting.sweep import load_cfg, model_args, run
 
-CONSOLE = Console()
+from .rag import DEFAULT_RAG_ROOT, EMBED_MODEL
 
-
-def load_cfg(path: Path, overrides: list[str]) -> dict:
-    cfg = yaml.safe_load(path.read_text())
-    for ov in overrides:
-        key, _, val = ov.partition("=")
-        parts, node = key.split("."), cfg
-        for p in parts[:-1]:
-            node = node.setdefault(p, {})
-        node[parts[-1]] = yaml.safe_load(val)
-    return cfg
+STAGES = ("ragprep", "predict")
 
 
-def resolve_model(cfg: dict, model: str) -> str:
-    return cfg.get("model_paths", {}).get(model, model)
-
-
-def resolve_tokenizer(cfg: dict, model: str) -> str | None:
-    return cfg.get("tokenizer_paths", {}).get(model)
-
-
-def format_command(module: str, argv: list[str]) -> str:
-    head = f"{sys.executable} -m {module}"
-    if not argv:
-        return head
-    groups, current = [], []
-    for token in argv:
-        if token.startswith("--") and current:
-            groups.append(current)
-            current = []
-        current.append(token)
-    groups.append(current)
-    args = " \\\n    ".join(" ".join(shlex.quote(t) for t in g) for g in groups)
-    return f"{head} \\\n    {args}"
-
-
-def run(module: str, argv: list[str], dry_run: bool) -> None:
-    cmd = [sys.executable, "-m", module, *argv]
-    CONSOLE.print(format_command(module, argv), style="green")
-    CONSOLE.rule()
-    if not dry_run:
-        subprocess.run(cmd, check=True)
-
-
-def index_args(cfg: dict) -> list[str]:
-    argv: list[str] = []
+def _common_argv(cfg: dict, extra_overwrite: bool = True) -> list[str]:
+    argv = []
     if cfg.get("start_idx") is not None:
         argv += ["--start_idx", str(cfg["start_idx"])]
     if cfg.get("end_idx") is not None:
         argv += ["--end_idx", str(cfg["end_idx"])]
-    return argv
-
-
-def rag_args(cfg: dict) -> list[str]:
-    rag = cfg.get("rag", {}) or {}
-    enabled = bool(rag.get("enabled", False))
-    argv = ["--rag", str(enabled)]
-    if enabled:
-        kbs = rag.get("kb", ["gaia", "assistantbench"])
-        argv += ["--rag-kb", ",".join(kbs)]
-    if rag.get("root"):
-        argv += ["--rag-root", str(rag["root"])]
-    if rag.get("top_k") is not None:
-        argv += ["--rag-top-k", str(rag["top_k"])]
+    if extra_overwrite and cfg.get("overwrite"):
+        argv += ["--overwrite"]
     return argv
 
 
@@ -89,38 +61,65 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="baselines.chief.sweep")
     p.add_argument("--config", type=Path, required=True)
     p.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
+    p.add_argument("--gt", default=None, choices=["with", "without"],
+                   help="GT setting (default: the config's `gt`, else 'with' — the "
+                        "vendored setting for this baseline, whose every stage prompt "
+                        "carries the answer). 'without' writes under outputs-nogt/.")
+    p.add_argument("--stages", default=",".join(STAGES),
+                   help=f"Comma-separated subset of {STAGES} to run (default: all).")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
     cfg = load_cfg(args.config, args.overrides)
+    specs = cfg.get("model_specs", {})
+    stages = [s.strip() for s in args.stages.split(",") if s.strip()]
+    for s in stages:
+        if s not in STAGES:
+            raise SystemExit(f"unknown stage {s!r} (expected one of {STAGES})")
 
-    for model in cfg["models"]:
-        model_path = resolve_model(cfg, model)
-        tokenizer_path = resolve_tokenizer(cfg, model)
-        for subset in cfg["subsets"]:
+    gt = args.gt or cfg.get("gt", "with")
+    if gt not in ("with", "without"):
+        raise SystemExit(f"gt must be 'with' or 'without', got {gt!r}")
+    outputs_root = cfg["outputs_root"]          # predictions
+    detect_root = outputs_root if gt == "with" else nogt_root(outputs_root)
+    # Stage-1 artifacts live outside both GT trees (they are GT-independent).
+    art_root = cfg.get("artifacts_root") or artifacts_root(outputs_root)
+
+    rag = cfg.get("rag") or {}
+    rag_kbs = rag.get("kb", ["gaia", "assistantbench"])
+    embed_model = rag.get("embed_model", EMBED_MODEL)
+    embed_name = Path(str(embed_model)).name
+
+    for subset in cfg["subsets"]:
+        data_dir = f"{cfg['data_dir']}/{subset}"
+        rag_path = Path(art_root) / subset / "rag" / f"{embed_name}.json"
+
+        if "ragprep" in stages and rag_kbs and (args.dry_run or not rag_path.exists()):
             argv = [
-                "--model", model_path,
-                *(["--tokenizer", tokenizer_path] if tokenizer_path else []),
-                "--input", f"{cfg['data_dir']}/{subset}",
-                "--output", f"{cfg['outputs_root']}/{model}/{subset}",
-                "--mode", str(cfg.get("mode", "batched")),
-                *rag_args(cfg),
-                "--dtype", cfg.get("dtype", "bfloat16"),
-                "--seed", str(cfg.get("seed", 0)),
-                "--temperature", str(cfg.get("temperature", 0.0)),
-                "--top_p", str(cfg.get("top_p", 1.0)),
-                "--gen_max_tokens", str(cfg.get("gen_max_tokens", 2048)),
-                "--enable_thinking", str(cfg.get("enable_thinking", False)),
-                "--gpu_memory_utilization", str(cfg.get("gpu_memory_utilization", 0.90)),
-                "--tensor_parallel_size", str(cfg.get("tensor_parallel_size", 1)),
-                *index_args(cfg),
+                "--input", data_dir,
+                "--output", str(rag_path),
+                "--rag-root", str(rag.get("root", DEFAULT_RAG_ROOT)),
+                "--rag-kb", ",".join(rag_kbs),
+                "--rag-top-k", str(rag.get("top_k", 2)),
+                "--embed-model", str(embed_model),
             ]
-            if cfg.get("max_model_len") is not None:
-                argv += ["--max_model_len", str(cfg["max_model_len"])]
-            if cfg.get("truncate_prompt_tokens") is not None:
-                argv += ["--truncate_prompt_tokens", str(cfg["truncate_prompt_tokens"])]
-            if cfg.get("overwrite"):
-                argv += ["--overwrite"]
+            run("baselines.chief.ragprep", argv, args.dry_run)
+
+        if "predict" not in stages:
+            continue
+        for model in cfg["models"]:
+            if model not in specs:
+                raise SystemExit(f"no model_specs entry for {model!r}")
+            argv = [
+                *model_args(model, specs[model], cfg),
+                "--model-name", model,
+                "--input", data_dir,
+                "--output", f"{detect_root}/{subset}/{model}",
+                "--gt", gt,
+            ]
+            if rag_kbs:
+                argv += ["--rag-texts", str(rag_path)]
+            argv += _common_argv(cfg)
             run("baselines.chief.predict", argv, args.dry_run)
 
 

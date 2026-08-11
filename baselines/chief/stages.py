@@ -1,18 +1,16 @@
 """CHIEF's six stages, factored into pure ``build_stepN`` / ``parse_stepN`` pairs.
 
 Every prompt string and every regex here is lifted **verbatim** from the vendored
-``baselines/CHIEF/CHIEF.py`` (functions ``step1_generate_subtasks`` …
-``step6_predict_final_answer`` and ``build_dag_graph``). The only change is
-structural: each vendored ``stepN`` interleaved *build prompt → call LLM → parse*;
-here the prompt-building and parsing are split into side-effect-free functions so
-that **both** execution paths can share them —
+``vendored/CHIEF/CHIEF.py`` (functions ``step1_generate_subtasks`` …
+``step6_predict_final_answer`` and ``build_dag_graph``); ``tests/test_chief_parity.py``
+drives that file directly and asserts the bytes still match. Two changes only,
+both structural:
 
-  * ``reference.py`` (per-sample): ``parse_stepN(call_model(build_stepN(...)))``
-  * ``pipeline.py`` (columnar/batched): build all prompts, one batched
-    ``engine.generate`` per stage, then ``parse_stepN`` each output.
-
-Keeping a single source of truth for the prompts/regexes is what guarantees the
-two paths are faithful to each other and to the original CHIEF.
+  * each vendored ``stepN`` interleaved *build prompt → call LLM → parse*; here
+    the two halves are side-effect-free functions, so ``methods.chief_program``
+    can yield the prompt and resume with the response;
+  * ``include_gt`` (GUIDE.md "GT settings") makes the answer sentence optional.
+    It defaults to ``True`` — the vendored bytes carry the answer.
 """
 from __future__ import annotations
 
@@ -33,6 +31,19 @@ def messages(prompt: str) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Vendored helpers (CHIEF.py:35-44) — verbatim
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _gt_line(ground_truth, include_gt: bool) -> str:
+    """The answer sentence every vendored stage prompt carries, or its absence.
+
+    With GT this is the vendored text byte-for-byte. Without GT the sentence goes
+    but its trailing blank line stays, so the problem statement and the
+    conversation remain separate paragraphs — the same clean elision the RAG-off
+    branch of stage 1 performs.
+    """
+    if not include_gt:
+        return "\n"
+    return f"The correct answer for the problem is: {ground_truth}\n\n"
+
 
 def normalize_agent(x):
     return re.sub(r"\s+", " ", str(x)).strip().lower() if x else None
@@ -71,17 +82,19 @@ def format_rag_blocks(rag_results) -> str:
 # Stage 1 — subtasks
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_step1(history_text, question, ground_truth, rag_text=None) -> str:
+def build_step1(history_text, question, ground_truth, rag_text=None,
+                include_gt: bool = True) -> str:
     """Build the stage-1 prompt.
 
     When ``rag_text`` is a string (RAG enabled) the prompt is byte-identical to the
     vendored one. When ``rag_text is None`` (RAG disabled, e.g. off-domain datasets)
     the retrieved-example section is omitted.
     """
+    gt_line = _gt_line(ground_truth, include_gt)
     head = (
         "You are an AI assistant tasked with analyzing a multi-agent conversation history when solving a real-world problem.\n"
         f"The problem is: {question}\n"
-        f"The correct answer for the problem is: {ground_truth}\n\n"
+        f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
         + f"\n\nThere are total {len(history_text)} steps, each entry provides the agent output and its role.\n\n"
@@ -185,12 +198,14 @@ def parse_step1(result_text):
 # Stage 2 — subtask edges
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_step2(history_text, question, ground_truth, subtasks) -> str:
+def build_step2(history_text, question, ground_truth, subtasks,
+                include_gt: bool = True) -> str:
     """Verbatim from CHIEF.py:189-233."""
+    gt_line = _gt_line(ground_truth, include_gt)
     return (
         "You are an expert in causal reasoning and multi-agent task analysis.\n"
         f"The problem is: {question}\n"
-        f"The correct answer for the problem is: {ground_truth}\n\n"
+        f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
         + f"\n\nThere are total {len(history_text)} steps.\n\n"
@@ -406,8 +421,10 @@ def parse_step2(raw):
 # Stage 3 — agents within subtasks
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_step3(history_text, question, ground_truth, subtasks) -> str:
+def build_step3(history_text, question, ground_truth, subtasks,
+                include_gt: bool = True) -> str:
     """Verbatim from CHIEF.py:402-448."""
+    gt_line = _gt_line(ground_truth, include_gt)
     subtask_lines = []
     for s in subtasks:
         subtask_lines.append(
@@ -418,7 +435,7 @@ def build_step3(history_text, question, ground_truth, subtasks) -> str:
     return (
         "You are an AI assistant tasked with analyzing multi-agent execution traces.\n"
         f"The problem is: {question}\n"
-        f"The correct answer for the problem is: {ground_truth}\n\n"
+        f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
         + f"\n\nThere are total {len(history_text)} steps, each entry provides the output of the agent and its role.\n\n"
@@ -582,8 +599,10 @@ def parse_step3(raw, subtasks):
 # Stage 4 — agent edges within subtasks
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_step4(history_text, question, ground_truth, subtasks_agents) -> str:
+def build_step4(history_text, question, ground_truth, subtasks_agents,
+                include_gt: bool = True) -> str:
     """Verbatim from CHIEF.py:569-614."""
+    gt_line = _gt_line(ground_truth, include_gt)
     subtask_agent_lines = []
     for s in subtasks_agents:
         agent_names = [a.get("agent") or a.get("Agent") or "" for a in s.get("agents", [])]
@@ -597,7 +616,7 @@ def build_step4(history_text, question, ground_truth, subtasks_agents) -> str:
     return (
         "You are an expert in causal reasoning and multi-agent task analysis.\n"
         f"The problem is: {question}\n"
-        f"The correct answer for the problem is: {ground_truth}\n\n"
+        f"{gt_line}"
         "Here is the conversation in JSON format:\n"
         + str(history_text)
         + f"\n\nThere are total {len(history_text)} steps, each entry provides the output of the agent and its role.\n\n"
@@ -736,12 +755,14 @@ def build_dag_graph(subtasks_agents, subtasks_edges, all_subtask_edges):
 # Stage 5 — candidate error set
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_step5(history_text, question, ground_truth, dag_graph) -> str:
+def build_step5(history_text, question, ground_truth, dag_graph,
+                include_gt: bool = True) -> str:
     """Verbatim from CHIEF.py:703-760."""
+    gt_line = _gt_line(ground_truth, include_gt)
     return (
         "You are an AI assistant tasked with analyzing a multi-agent conversation solving a real-world problem.\n"
         f"The problem is: {question}\n"
-        f"The correct answer for the problem is: {ground_truth}\n\n"
+        f"{gt_line}"
         "Here is the conversation:\n"
         + str(history_text)
         + f"\n\nThere are total {len(history_text)} steps, each entry provides an agent's output.\n\n"
@@ -977,12 +998,14 @@ def parse_step5(response):
 # Stage 6 — final single-step attribution
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_step6(history_text, question, ground_truth, candidate_set, dag_graph) -> str:
+def build_step6(history_text, question, ground_truth, candidate_set, dag_graph,
+                include_gt: bool = True) -> str:
     """Verbatim from CHIEF.py:937-970."""
+    gt_line = _gt_line(ground_truth, include_gt)
     return (
         "You are an AI assistant tasked with analyzing a multi-agent conversation solving a real-world problem.\n"
         f"The problem is: {question}\n"
-        f"The correct answer for the problem is: {ground_truth}\n\n"
+        f"{gt_line}"
         "Here is the multi-agent conversation:\n"
         + str(history_text)
         + f"\n\nThere are total {len(history_text)} steps, each entry provides an agent's output.\n\n"

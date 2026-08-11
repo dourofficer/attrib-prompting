@@ -1,126 +1,133 @@
 # CHIEF baseline
 
-This is the **CHIEF baseline** sub-repo for the failure-attribution project (see the top-level
-`CLAUDE.md`). CHIEF — *"From Flat Logs to Causal Graphs: Hierarchical Failure Attribution for
-LLM-based Multi-Agent Systems"* — attributes failure by first reconstructing the trajectory into a
-**hierarchical causal graph** (subtask → agent → step) and then reasoning over that graph, rather
-than reading the log flat. The authors' implementation is **vendored verbatim** at
-`baselines/CHIEF/` (with `chief.pdf`, the RAG index/KB, and their Who&When copy); this directory is
-the local-vLLM re-implementation that runs it over **our** backbones and datasets on the identical
-per-seed val/test splits as CRR / SVD / prompting.
+Reproduction of **CHIEF** (Causal HIErarchical Failure attribution; the paper is
+vendored at [`vendored/CHIEF/chief.pdf`](../../vendored/CHIEF/chief.pdf)) — a
+training-free method that stops reading an execution log as a flat sequence.
+Instead it rebuilds the trajectory into a **hierarchical causal graph**
+(subtask → agent → step), then walks that graph top-down to find the step that
+caused the failure.
 
-## What it does
+## The idea in one sentence
 
-CHIEF is exactly **six sequential LLM calls per trajectory** (the vendored `CHIEF.py`
-`step1…step6`), all greedy (`temperature 0.0`):
+A long multi-agent log hides *why* one step went wrong, because the evidence
+that condemns it is scattered across dozens of other turns; CHIEF spends five
+LLM calls turning the log into a structure that makes those links explicit, then
+asks the sixth call a much narrower question.
 
-1. **Subtask decomposition** — split the history into contiguous, non-overlapping step ranges with
-   a name, a virtual *oracle*, evidence, and loop info; on Who&When, stage 1 is few-shot seeded by
-   **RAG** over the vendored GAIA + AssistantBench knowledge bases.
-2. **Subtask edges** — causal edges between consecutive subtasks (data transfer, failure modes).
-3. **Agent nodes** — per-subtask OTAR parsing (Action/Observation/Thought/Result) + step-level data flows.
-4. **Agent edges** — intra-subtask dependencies between agents, with failure modes.
-5. **Candidate set** — reason over the assembled DAG with the paper's three localization rules;
-   emit ≥5 candidate error steps annotated with loop / data / irrecoverability issues.
-6. **Final attribution** — pick the single most responsible `(agent, step)` from the candidates.
+## Pipeline
 
-The prediction is the stage-6 `(Agent Name, Step Number)` pair; evaluation (step@1 / agent@1 on the
-CRR test splits) is deferred to `report.py`, exactly like the prompting baselines.
+Two stages, both resumable, orchestrated by `sweep.py` (each is also a
+directly-invocable module). Stage 2 is six sequential LLM calls per trajectory.
 
-## Faithfulness to the vendored implementation
+| stage | module | one unit of work | writes |
+|---|---|---|---|
+| 1. ragprep | `ragprep.py` | embed each trajectory's *question* (MiniLM) and search the committed GAIA + AssistantBench index for a worked decomposition example | `artifacts/<ds>/<subset>/rag/<embed_model>.json` (+ `.meta.json`) |
+| 2. detection | `predict.py` | the six calls below | `<gt-root>/<ds>/<subset>/<model>/chief/<id>.json` |
 
-**Every prompt string and every parsing regex is lifted verbatim from
-`baselines/CHIEF/CHIEF.py`** — `stages.py` only splits each vendored `stepN` (which interleaved
-*build prompt → call API → parse*) into side-effect-free `build_stepN` / `parse_stepN` pairs.
-A stage-by-stage parity test (identical dummy inputs + canned LLM outputs through both codebases)
-confirms byte-identical prompts and deep-equal parsed structures for all six stages, the DAG
-assembly, and the `normalize_agent`/`normalize_step` helpers. The deliberate differences, all
-infrastructure:
+The six calls, all greedy (`temperature 0.0`), each parsed before the next is
+built:
 
-- **Local vLLM instead of the OpenAI API.** The vendored code calls an OpenAI-compatible endpoint
-  one prompt at a time; here `engine.py` reuses the prompting baseline's `PromptEngine` (same chat
-  templates, same `enable_thinking` toggle) so any local checkpoint is a backbone. The vendored
-  system prompt and greedy decoding are preserved.
-- **`strip_think` before every parse.** Reasoning backbones emit `<think>` blocks the vendored
-  parsers never saw; `engine.strip_think` (a hardened superset of prompting's) removes them so the
-  verbatim regexes see only the answer.
-- **Batched execution.** `pipeline.py` runs the six stages *columnar* — one batched `generate` per
-  stage across all trajectories. Each trajectory's stage-N prompt depends only on its own parsed
-  stage-(N−1) output, so this is identical in effect to the per-sample loop; `reference.py` is that
-  literal per-sample loop (shared builders/parsers) kept for correctness checks.
-- **Linux-safe, lazy RAG.** The vendored `RAGRetriever` hardcodes Windows backslash paths and loads
-  at import time; `rag.py` wraps the same FAISS + MiniLM logic (including the quirky
-  `combined_sorted[1:top_k]` slice, which returns a single example at the default `top_k=2`) with
-  configurable roots/KBs. With both KBs selected the retrieved examples match the vendored search.
-- **RAG is a config axis, not hardcoded.** Who&When is CHIEF's native domain → `rag.enabled: true`
-  (faithful). CORRECT-Error / TraceElephant are off-domain for the GAIA/AssistantBench KBs →
-  disabled there; stage 1 then omits the retrieved-example block (the only prompt deviation, and
-  only when RAG is off).
+| # | asks the model to | consumes |
+|---|---|---|
+| 1 | split the history into contiguous, non-overlapping step ranges, each with a name, a one-line *oracle*, evidence and loop info | history + the retrieved exemplar |
+| 2 | draw causal edges between **consecutive** subtasks, with the data transferred and how it could fail | stage 1 |
+| 3 | for each subtask, summarize every acting agent as **OTAR** (Observation, Thought, Action, Result) plus the step-level data flow | stage 1 |
+| 4 | draw agent→agent edges *within* each subtask | stage 3 |
+| — | *(no LLM call)* assemble the graph from stages 1–4 | — |
+| 5 | walk the graph and shortlist ≥5 candidate error steps, tagged with loop / data / irrecoverability issues | the graph |
+| 6 | pick the **single** most responsible `(agent, step)` and say why | candidates + graph |
 
-## Layout (mirrors the repo's `src/` ↔ `experiments/` split, in miniature)
+Stage 6's answer — `Agent Name:` / `Step Number:` / `Reason for Mistake:` — is
+the prediction. All six responses are kept in the output file's `calls` list, so
+a finished trajectory carries its whole reasoning transcript and the graph can
+be reconstructed without re-running anything.
 
-- **Core logic (config-free):**
-  - `stages.py` — the six `build_stepN`/`parse_stepN` pairs + `build_dag_graph`; the single source
-    of truth both execution paths share.
-  - `pipeline.py` — columnar/batched runner (default). `reference.py` — per-sample faithful runner.
-  - `engine.py` — re-export of prompting's `PromptEngine` + hardened `strip_think`.
-  - `rag.py` — `ChiefRetriever` over the vendored `baselines/CHIEF/rag/{index,kb}`.
-  - `predict.py` — runner: one `(model, subset)` per invocation → `predictions_method-chief.jsonl`
-    in the prompting schema, so the whole report stack applies unchanged.
-  - `report.py` — thin alias of `baselines.prompting.report` (schema-compatible predictions).
-- **Orchestration (chooses arguments, runs nothing itself):**
-  - `sweep.py` — grid over models × subsets; shells out one child per combo to `predict`.
-  - `configs/<ds>.yaml` — one inference config per dataset (models, paths, RAG toggle, vLLM knobs);
-    `configs/report_<ds>.yaml` — one report config (same split sources as the prompting reports).
-  - `scripts/run_chief.sh` — the front door: models × datasets sequentially on one GPU.
+## Where retrieval fits, and why it is precomputed
 
-Outputs land under `outputs-<ds>/chief/<model>/<subset>/` (predictions) and
-`outputs-<ds>/chief-reports/` (tables).
+Stage 1 is few-shot seeded: the model sees one worked example of a task being
+decomposed into steps, retrieved from a knowledge base of 165 GAIA and 33
+AssistantBench tasks that ships with the vendored code
+(`vendored/CHIEF/rag/`). The exemplar is a *decomposition template*, not domain
+knowledge — which is why every dataset keeps it on, even where the tasks are
+unrelated to web search.
 
-## Conventions that bite (baseline-specific)
+That lookup depends only on the question, the knowledge base and the encoder —
+not on the detector, and not on the GT setting. So it runs once per subset and
+lands in **`artifacts/`**, the sibling of `outputs/` that holds precomputed
+*inputs* rather than predictions:
 
-- **Stage parsers are lenient by design — never "fix" them.** The vendored regexes silently drop
-  malformed blocks, default missing floats to `0.0`, and truncate subtasks to the shortest parsed
-  field list (`min(len(names), …)`). Tightening any of this changes the method.
-- **Model paths are `../hub/...` relative to the repo root** (matching the dataset manifests);
-  run everything from the repo root or the checkpoints won't resolve. Only `qwen3.5-9b` and
-  `deepseek-8b` are currently downloaded — fetch the rest into `../hub/` before sweeping them.
-- **Reasoning backbones need token headroom.** DeepSeek-R1-Distill always thinks and
-  `gen_max_tokens` caps thinking + answer combined; CHIEF's structured stage outputs are long, so
-  `run_chief.sh` bumps deepseek-8b to 8192 (`DEEPSEEK_GEN_MAX_TOKENS` to override) — same fix as
-  prompting's `run_deepseek.sh`.
-- **`history` step indexing is 0-based** and the stage-6 `Step Number` is compared to
-  `mistake_step` as an integer by the shared report; no ±1 shifting anywhere.
-- **RAG assets are the vendored ones** (`baselines/CHIEF/rag/{index,kb}`); the FAISS indices were
-  built with `sentence-transformers/all-MiniLM-L6-v2` — don't swap the embedder without rebuilding.
-- **`--mode per_sample` exists for auditing, not sweeping.** It issues one `generate` per call
-  (GPU-starved); use it to spot-check that batched results match the literal vendored control flow.
+```
+artifacts/<ds>/<subset>/rag/all-MiniLM-L6-v2.json    # stage 1, encoder-keyed
+outputs/<ds>/<subset>/<model>/chief/<id>.json        # stage 2, predictions
+```
+
+Detection then reads that JSON. No FAISS search and no embedding model run
+during the six calls, so the machine holding the API key needs neither
+`faiss` nor `sentence-transformers` installed (they are the optional `[rag]`
+extra), every rerun injects byte-identical exemplars, and the artifact is
+committed so nobody recomputes it.
+
+One quirk worth knowing before reading the artifact: the vendored search returns
+`combined_sorted[1:top_k]`, **dropping the best hit**, so the default `top_k: 2`
+injects exactly one exemplar — the runner-up. It is reproduced, not fixed; see
+[`IMPLEMENTATION.md`](IMPLEMENTATION.md), which also records how the vendored
+code differs from the paper's appendix (no separate oracle-synthesis stage, no
+step-edge prompt).
+
+## GT settings
+
+Every vendored stage prompt carries the task answer, so with-GT is this
+baseline's default — the inverse of CORRECT, the same as prompting.
+
+| stage | affected by `--gt`? | why |
+|---|---|---|
+| 1. ragprep | no | keyed by the question, the knowledge base and the encoder; one artifact serves both settings |
+| 2. detection | **yes** | `--gt without` drops `The correct answer for the problem is: ...` from **all six** prompts |
+
+With-GT results land in `outputs/`, without-GT in `outputs-nogt/`, identical
+inner layout.
+
+## Layout
+
+- `stages.py` — the six `build_stepN`/`parse_stepN` pairs + `build_dag_graph`,
+  lifted verbatim from `vendored/CHIEF/CHIEF.py`.
+- `methods.py` — `chief_program`: the six stages as a generator, so the shared
+  runner supplies either columnar batching (vLLM) or per-trajectory concurrency
+  (API). Also the hardened `strip_think`.
+- `ragprep.py` / `rag.py` — stage 1 and the FAISS retriever it wraps.
+- `predict.py` — one `(model, subset)` per invocation.
+- `sweep.py` — the grid; shells out one child per stage/combo.
+- `report.py` — thin alias of `baselines.prompting.report`.
+- `configs/` — `<ds>-api.yaml` (what to run) and `report_<ds>.yaml` (what to
+  score); see [`configs/README.md`](configs/README.md) to add local models.
 
 ## Running
 
-Everything runs **from the repo root** as `python -m baselines.chief.<stage>`. The sweep shares the
-repo interface — `--config <yaml> [--set key=value ...] [--dry-run]`; `--set` does dot-path
-overrides. Predictions are **idempotent** — an existing `predictions_method-chief.jsonl` is skipped
-unless you pass `--set overwrite=true` (or `--overwrite` to `predict`).
+Everything runs from the repo root. The front door is `scripts/chief/run.sh`:
 
 ```bash
-# The front door: all models × all datasets on one GPU (sequential, idempotent):
-bash baselines/chief/scripts/run_chief.sh 4
+# Precompute the exemplars once per dataset (CPU, needs pip install -e ".[rag]"):
+DATASET=ww STAGES=ragprep bash scripts/chief/run.sh
 
-# Narrow it, or forward overrides:
-MODELS="qwen3.5-9b"  bash baselines/chief/scripts/run_chief.sh 2
-MODELS="deepseek-8b"  bash baselines/chief/scripts/run_chief.sh 3
-MODELS="qwen3.5-9b" DATASETS="ww" bash baselines/chief/scripts/run_chief.sh 0
-bash baselines/chief/scripts/run_chief.sh 4 --set overwrite=true
-
-# One dataset directly through the sweep:
-CUDA_VISIBLE_DEVICES=4 uv run python -m baselines.chief.sweep \
-    --config baselines/chief/configs/ww.yaml --dry-run
+# Detect (both models in the config), or narrow it:
+DATASET=ww bash scripts/chief/run.sh
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/chief/run.sh
+DATASET=ww MODEL=gpt-4o GT=without bash scripts/chief/run.sh
+DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/chief/run.sh   # preview
 ```
 
-Then build the comparison tables (CPU only), which place CHIEF next to SVD/CRR per seed:
+Runs resume on file existence — rerun the same command after a crash and only
+the missing trajectories execute. Then build the tables (CPU only):
 
 ```bash
-python -m baselines.chief.report --config baselines/chief/configs/report_ww.yaml
 python -m baselines.chief.report --config baselines/chief/configs/report_ww.yaml --check-only
+python -m baselines.chief.report --config baselines/chief/configs/report_ww.yaml
 ```
+
+## Cost
+
+Six calls per trajectory, and stages 5–6 inline the causal graph on top of the
+full history. The paper measures ~55k tokens per hand-crafted case and ~20k per
+algorithm-generated one — 2.5–3× a single all-at-once prompt. Budget
+accordingly before sweeping `correct-error`, which is 2,226 of the repo's 2,586
+trajectories.

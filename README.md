@@ -38,6 +38,7 @@ supports both GT settings through the `--gt` flag below.
 pip install -e .            # CPU core: evaluation, tests, dry-runs
 pip install -e ".[api]"     # + OpenAI-compatible API inference
 pip install -e ".[vllm]"    # + local-checkpoint inference (CUDA-matched vLLM)
+pip install -e ".[rag]"     # + CHIEF's offline retrieval stage only (faiss, MiniLM)
 ```
 
 Run everything from the repo root. Local checkpoints are expected under `../hub/`.
@@ -63,6 +64,14 @@ DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/correct/run.sh
 Its `configs/` ships the closed-source configs only (`gpt-4o`, `gpt-5`);
 [`baselines/correct/configs/README.md`](baselines/correct/configs/README.md)
 documents the keys and templates a local-vLLM config.
+
+The CHIEF baseline (exemplar retrieval → six-call causal-graph detection; see
+[`baselines/chief/README.md`](baselines/chief/README.md)):
+
+```bash
+DATASET=ww STAGES=ragprep bash scripts/chief/run.sh           # CPU, needs the [rag] extra
+DATASET=ww MODEL=gpt-4o bash scripts/chief/run.sh
+```
 
 Or the full grid per dataset:
 
@@ -140,12 +149,12 @@ baselines/shared/              method-agnostic infra: common.py helpers,
 baselines/prompting/           the three methods (verbatim prompts), predict/sweep/report,
                                configs/ (<ds>.yaml vLLM, <ds>-api.yaml APIs), per-model scripts
 baselines/correct/             CORRECT baseline: schemagen → similarity → detection
-baselines/chief/               further baseline, not yet adapted (see GUIDE.md)
+baselines/chief/               CHIEF baseline: ragprep → six-call causal-graph detection
 data/                          corpora   ·  vendored/  upstream code, verbatim
 outputs/, outputs-nogt/        committed results, with-GT and without-GT
 artifacts/                     committed inputs a run consumes, not results:
-                               CORRECT's schemata and trajectory similarities
-scripts/prompting/             front doors (one subdir per baseline family)
+                               CORRECT's schemata and similarities, CHIEF's exemplars
+scripts/                       front doors (one subdir per baseline family)
 misc/                          one-off corpus/format utilities
 tests/                         CPU-only, keyless (pytest)
 ```

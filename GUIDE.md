@@ -1,9 +1,8 @@
 # Baseline adaptation guide
 
-Conventions every baseline in this repo (prompting, correct — done; chief —
-upcoming) must follow. The contract covers **I/O, configs, resume, and
-evaluation**; the method's internal logic stays free to follow its vendored
-implementation faithfully.
+Conventions every baseline in this repo (prompting, correct, chief) must follow.
+The contract covers **I/O, configs, resume, and evaluation**; the method's
+internal logic stays free to follow its vendored implementation faithfully.
 
 ## The two rules
 
@@ -100,9 +99,9 @@ trajectories independently so each writes as it finishes).
 Preferred shape: express the method as a per-trajectory generator (yield one
 round's prompts, receive responses, return the output doc) and reuse
 `baselines.shared.runner.run_batched` / `run_streaming` — prompting shows the
-pattern in `baselines/prompting/methods.py`. A method may keep its own loop
-(e.g. chief's stage-columnar pipeline) as long as the I/O and resume
-conventions above hold.
+pattern in `baselines/prompting/methods.py`, and chief's six-stage
+`chief_program` shows it for a long chain. A method may keep its own loop as
+long as the I/O and resume conventions above hold.
 
 ## Configs
 

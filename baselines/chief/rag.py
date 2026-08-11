@@ -1,24 +1,30 @@
 """Config-driven, Linux-safe RAG retriever for CHIEF's stage 1.
 
-The vendored ``baselines/CHIEF/rag/rag_search.RAGRetriever`` (a) hardcodes Windows
+The vendored ``vendored/CHIEF/rag/rag_search.RAGRetriever`` (a) hardcodes Windows
 backslash paths (``index\\gaia.index``), (b) is instantiated at *import* time, and
 (c) always searches *both* the GAIA and AssistantBench indices. Here we wrap the
 same FAISS + sentence-transformers logic but:
 
   * resolve index/kb paths under a configurable ``rag_root`` with forward slashes,
-  * build lazily and only when RAG is enabled,
+  * build lazily and only when retrieval actually runs,
   * let the caller pick which KB(s) to load (``gaia`` / ``assistantbench``).
 
-When both KBs are selected the search reproduces the vendored behaviour exactly
-(including the ``combined_sorted[1:top_k]`` slice), so CHIEF on Who&When stays
-faithful. Selecting a single KB (e.g. reuse GAIA off-domain for CORRECT-Error /
-TraceElephant) searches just that index.
+Ranking is otherwise untouched — including the ``combined_sorted[1:top_k]`` slice
+that drops the top hit — so the injected exemplars stay byte-identical to the
+vendored ones.
+
+Only :mod:`baselines.chief.ragprep` imports this module: retrieval is an offline
+stage whose output is committed under ``artifacts/``. ``faiss`` and
+``sentence_transformers`` are therefore optional dependencies (``pip install
+-e ".[rag]"``), imported inside the constructor so that detection — and the whole
+test suite — runs without them.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_RAG_ROOT = "vendored/CHIEF/rag"
 
 # Map KB shorthand -> (index filename, kb filename, source tag used in step-1 blocks).
 _KB_FILES = {
@@ -28,7 +34,8 @@ _KB_FILES = {
 
 
 class ChiefRetriever:
-    def __init__(self, rag_root, kbs=("gaia", "assistantbench"), embed_model=_EMBED_MODEL):
+    def __init__(self, rag_root=DEFAULT_RAG_ROOT, kbs=("gaia", "assistantbench"),
+                 embed_model=EMBED_MODEL):
         import faiss
         import json
         from sentence_transformers import SentenceTransformer
@@ -45,8 +52,15 @@ class ChiefRetriever:
         self.sources = {}
         for kb in self.kbs:
             idx_name, kb_name, source = _KB_FILES[kb]
-            self.indices[kb] = faiss.read_index(str(root / "index" / idx_name))
-            with open(root / "kb" / kb_name, "r", encoding="utf-8") as f:
+            index_path = root / "index" / idx_name
+            kb_path = root / "kb" / kb_name
+            for p in (index_path, kb_path):
+                if not p.is_file():
+                    raise SystemExit(
+                        f"missing RAG artifact {p} — point --rag-root at the vendored "
+                        f"knowledge base (default: {DEFAULT_RAG_ROOT})")
+            self.indices[kb] = faiss.read_index(str(index_path))
+            with open(kb_path, "r", encoding="utf-8") as f:
                 self.records[kb] = json.load(f)
             self.sources[kb] = source
 
@@ -59,7 +73,7 @@ class ChiefRetriever:
         """Return retrieved records, mirroring the vendored ``RAGRetriever.search``.
 
         Each hit carries the ``source``/``question``/``steps``/``text`` fields that
-        ``stages.format_rag_blocks`` expects. When both KBs are loaded the result is
+        ``stages.format_rag_blocks`` expects. With both KBs loaded the result is
         identical to the vendored combine-sort-``[1:top_k]`` behaviour.
         """
         query_vec = self._encode(query)
@@ -82,22 +96,9 @@ class ChiefRetriever:
         return combined_sorted[1:top_k]
 
 
-def build_retriever(rag_root, kbs):
-    """Construct a retriever, or ``None`` if RAG is disabled (empty ``kbs``)."""
+def build_retriever(rag_root=DEFAULT_RAG_ROOT, kbs=("gaia", "assistantbench"),
+                    embed_model=EMBED_MODEL):
+    """Construct a retriever, or ``None`` if no knowledge base is selected."""
     if not kbs:
         return None
-    return ChiefRetriever(rag_root, kbs=list(kbs))
-
-
-def rag_texts_for(retriever, records, top_k: int = 2):
-    """Precompute the stage-1 ``rag_text`` block for every record.
-
-    Returns a list aligned to ``records``: a formatted string when the retriever is
-    present, else ``None`` (stage-1 omits the retrieved-example section).
-    """
-    from .stages import format_rag_blocks
-
-    if retriever is None:
-        return [None] * len(records)
-    return [format_rag_blocks(retriever.search(r.get("question", ""), top_k=top_k))
-            for r in records]
+    return ChiefRetriever(rag_root, kbs=list(kbs), embed_model=embed_model)
