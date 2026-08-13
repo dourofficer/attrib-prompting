@@ -73,6 +73,15 @@ DATASET=ww STAGES=ragprep bash scripts/chief/run.sh           # CPU, needs the [
 DATASET=ww MODEL=gpt-4o bash scripts/chief/run.sh
 ```
 
+The RAFFLES baseline (iterative Judge-Evaluator loop, built from the paper —
+it releases no code; see [`baselines/raffles/README.md`](baselines/raffles/README.md)).
+Its paper setting is without-GT, so default results land in `outputs-nogt/`:
+
+```bash
+DATASET=ww MODEL=gpt-4o bash scripts/raffles/run.sh
+DATASET=ww MODEL=gpt-4o MAX_ITERS=5 bash scripts/raffles/run.sh   # the paper's K=5
+```
+
 Or the full grid per dataset:
 
 ```bash
@@ -150,6 +159,7 @@ baselines/prompting/           the three methods (verbatim prompts), predict/swe
                                configs/ (<ds>.yaml vLLM, <ds>-api.yaml APIs), per-model scripts
 baselines/correct/             CORRECT baseline: schemagen → similarity → detection
 baselines/chief/               CHIEF baseline: ragprep → six-call causal-graph detection
+baselines/raffles/             RAFFLES baseline: iterative Judge-Evaluator loop
 data/                          corpora   ·  vendored/  upstream code, verbatim
 outputs/, outputs-nogt/        committed results, with-GT and without-GT
 artifacts/                     committed inputs a run consumes, not results:

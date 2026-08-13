@@ -1,8 +1,8 @@
 # scripts/
 
 Front doors for running the baselines. One subdirectory per baseline family —
-`prompting/`, `correct/` and `chief/`. This README stays at `scripts/` and
-covers all of them.
+`prompting/`, `correct/`, `chief/` and `raffles/`. This README stays at
+`scripts/` and covers all of them.
 
 ## prompting/
 
@@ -141,6 +141,47 @@ stage needs `pip install -e ".[rag]"` (faiss + sentence-transformers).
 Finally, detection is **six LLM calls per trajectory** with the causal graph
 inlined in the last two; budget roughly 2.5–3× an all-at-once run.
 
+## raffles/
+
+One front door for the RAFFLES Judge-Evaluator loop (see
+[`baselines/raffles/README.md`](../baselines/raffles/README.md)):
+
+```bash
+DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/raffles/run.sh
+```
+
+Examples:
+
+```bash
+DATASET=ww bash scripts/raffles/run.sh                              # everything in the config
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/raffles/run.sh
+DATASET=ww MODEL=gpt-4o MAX_ITERS=5 bash scripts/raffles/run.sh     # the paper's K=5
+DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/raffles/run.sh  # preview
+```
+
+Same env knobs as the prompting scripts (`GT`, `GPU`, `START_IDX`/`END_IDX`,
+`DRY_RUN`, `OVERWRITE`, `EXTRA_SET`, `CONFIG`), plus:
+
+| var | meaning |
+|---|---|
+| `MODEL` | optional here — omit to run every model in the config |
+| `MAX_ITERS` | K, the extra Judge-Evaluator iterations after the first pass (default 2 from the config) |
+| `THRESHOLD` | early-stop confidence, of 400 (default 350) |
+
+Config resolution is the same shape as prompting's, but only the closed-source
+configs ship: `baselines/raffles/configs/<DATASET>-api.yaml` (`gpt-4o`,
+`gpt-5`). Add `<DATASET>.yaml` for local vLLM models and the script picks it up
+— [`baselines/raffles/configs/README.md`](../baselines/raffles/configs/README.md)
+has the template.
+
+Two RAFFLES-specific notes. The default GT setting is **`without`** (the paper
+evaluates Who&When without ground truth), so results land in `outputs-nogt/`
+unless `GT=with`. And one trajectory costs up to `4 × (K+1)` LLM calls — a
+Judge plus three concurrent Evaluators per iteration — though early
+termination usually stops sooner. There is no offline stage and nothing in
+`artifacts/`. For a side-by-side K=5 run that doesn't overwrite the default,
+add `EXTRA_SET="--set max_iters=5 --set method_dir=raffles.k5"`.
+
 ## I/O — what each operation reads and writes
 
 Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
@@ -156,6 +197,8 @@ Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
 | `scripts/chief/run.sh` | `baselines/chief/configs/<DATASET>[-api].yaml` | nothing itself — execs the 2-stage sweep |
 | `… → baselines.chief.ragprep` | `data/<DATASET>/<SUBSET>/<id>.json` (questions only); `vendored/CHIEF/rag/{index,kb}` | `artifacts/<DATASET>/<SUBSET>/rag/<EMBED_MODEL>.json` (+ `.meta.json`) |
 | `… → baselines.chief.predict` | the corpus + the RAG artifact above; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/chief/<id>.json` (+ `_run.json`), each with all six stage responses in `calls` |
+| `scripts/raffles/run.sh` | `baselines/raffles/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
+| `… → baselines.raffles.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/raffles/<id>.json` (+ `_run.json`), each with the full Judge/Evaluator transcript in `calls` and a per-iteration audit in `iterations` |
 | `… → baselines.prompting.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing `<gt-root>/…/<id>.json` (resume ledger); `$OPENAI_API_KEY` for API models; `../hub/<checkpoint>` for vLLM | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (one per trajectory, atomic) and `…/<METHOD>/_run.json` (run snapshot) |
 | `baselines.prompting.report --config configs/report_<ds>.yaml [--gt without]` | `data/<ds>/<subset>/*.json` (split universe only); `<gt-root>/<ds>/<subset>/<model>/<method>/[0-9]*.json` | `<gt-root>/<ds>/reports/completion_status.tsv`, `…/reports/<model>/<subset>/comparison_by_seed.tsv`, `…/reports/summary_mean_over_seeds.tsv` |
 

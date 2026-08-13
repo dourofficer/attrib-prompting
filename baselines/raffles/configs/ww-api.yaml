@@ -1,0 +1,41 @@
+# RAFFLES inference config — Who&When (ww), closed-source API models.
+# Requires the model's API key in the environment (default: OPENAI_API_KEY).
+models:  [gpt-4o, gpt-5]
+subsets: [algorithm-generated, hand-crafted]
+
+data_dir:     data/ww
+outputs_root: outputs/ww
+
+# Paper setting: RAFFLES evaluates Who&When without ground truth, so the
+# default tree is outputs-nogt/.
+gt: without
+
+# K = extra Judge-Evaluator iterations after the first pass. 2 is the paper's
+# main-table setting; its Who&When SOTA row uses 5 — run that side by side with
+# `--set max_iters=5 --set method_dir=raffles.k5`. threshold is the paper's
+# early-stop confidence (of 400).
+max_iters: 2
+threshold: 350
+
+start_idx: 0
+end_idx:   null
+
+# A spec's `params` are sent to the API verbatim — nothing else is added, and
+# _run.json records exactly what was sent. Each call returns one JSON object,
+# but the Judge quotes the log in three rationale fields, so the budget is
+# generous.
+model_specs:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    # temperature 0.0 matches the paper's greedy decoding; without it the API
+    # defaults to 1.0 and the iterative chain stops being reproducible.
+    params: {max_tokens: 8192, temperature: 0.0}
+  gpt-5:
+    backend: openai
+    model: gpt-5
+    # No temperature: reasoning models reject a non-default one. The cap is
+    # generous because reasoning tokens are drawn from it, and a cap exhausted
+    # while thinking returns empty content, which parses to a zero-confidence
+    # evaluator or a skipped judge iteration rather than an error.
+    params: {max_completion_tokens: 16384, reasoning_effort: medium}
