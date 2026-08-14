@@ -26,12 +26,12 @@ paper-faithful tree `outputs-nogt/` and `GT=with` writes the extension tree
 `outputs/`. The loops below set `GT` explicitly both ways, so the default never
 matters mid-sweep.
 
-## Status (2026-08-13)
+## Status (2026-08-14)
 
 | stage | state |
 |---|---|
-| predict | 0 / 5,892 — nothing run yet (dummy-backend e2e only) |
-| report | not started |
+| predict | full grid exists from the earlier paper-prompt runs — **stale** (the simplified prompts, gpt-4o temperature 0.6 and gpt-5 reasoning_effort low postdate them). The loops below carry `OVERWRITE=1` to redo everything in place |
+| report | stale tables in `outputs[-nogt]/<ds>/reports/raffles/` — rewritten by step 5 |
 
 ---
 
@@ -43,11 +43,14 @@ matters mid-sweep.
 
   ```bash
   DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o END_IDX=2 DRY_RUN=1 bash scripts/raffles/run.sh
-  DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o END_IDX=2 bash scripts/raffles/run.sh
+  DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o END_IDX=2 OVERWRITE=1 bash scripts/raffles/run.sh
   jq '{gt_in_prompt, predicted_agent, predicted_step, confidence, n_iterations,
        calls: [.calls[] | {iteration, role}]}' \
     outputs-nogt/ww/hand-crafted/gpt-4o/raffles/1.json
   ```
+
+  (`OVERWRITE=1` because stale results occupy this directory — without it the
+  run reports `skip (complete)` and tests nothing.)
 
   Expect `gt_in_prompt: false`, a non-null `predicted_step`, and per iteration
   one `judge` call followed by three `evaluator` calls. A null prediction with
@@ -56,22 +59,29 @@ matters mid-sweep.
 
 - [ ] **3. Detection — ww + traceelephant**, both models, both GT settings
   (1,440 runs). `MODEL` omitted ⇒ every model in the config; `GT=without`
-  writes `outputs-nogt/`, `GT=with` writes `outputs/`:
+  writes `outputs-nogt/`, `GT=with` writes `outputs/`. `OVERWRITE=1` clears
+  each method dir as its run starts, replacing the stale results:
 
   ```bash
   for gt in without with; do
     for ds in ww traceelephant; do
-      DATASET=$ds GT=$gt bash scripts/raffles/run.sh
+      DATASET=$ds GT=$gt OVERWRITE=1 bash scripts/raffles/run.sh
     done
   done
   ```
 
+  **`OVERWRITE=1` is for this first pass only.** If a sweep dies midway,
+  rerun the same command *without* it — file existence is the resume ledger,
+  so the rerun redoes only the missing trajectories; keeping `OVERWRITE=1`
+  would wipe the completed ones and pay for them again.
+
 - [ ] **4. Detection — correct-error, gpt-4o only** (4,452 runs, three quarters
-  of the sweep). **`MODEL=gpt-4o` is required** — omitting it runs gpt-5 too:
+  of the sweep). **`MODEL=gpt-4o` is required** — omitting it runs gpt-5 too.
+  Same rule: `OVERWRITE=1` on the first pass, dropped on resume reruns:
 
   ```bash
   for gt in without with; do
-    DATASET=correct-error MODEL=gpt-4o GT=$gt bash scripts/raffles/run.sh
+    DATASET=correct-error MODEL=gpt-4o GT=$gt OVERWRITE=1 bash scripts/raffles/run.sh
   done
   ```
 
