@@ -2,11 +2,12 @@
 
 Run from the repo root:  python tests/fixtures/capture_raffles_goldens.py
 
-RAFFLES has no vendored code — the paper's Appendix F.3 is the source of the
-prompt text — so these goldens pin the transcription: the test suite asserts
-the builders keep reproducing these bytes character-for-character, and
-``tests/test_raffles_pipeline.py`` separately asserts the paper's key sentences
-appear, so a fixture regeneration cannot silently drift from the paper wording.
+RAFFLES has no vendored code, and this repo runs deliberately simplified
+prompts (see ``baselines/raffles/prompts.py``). These goldens pin the current
+wording: the test suite asserts the builders keep reproducing these bytes
+character-for-character, and ``tests/test_raffles_pipeline.py`` separately
+asserts the prompts' core-contract sentences, so a fixture regeneration cannot
+silently change what the prompts ask for.
 """
 from __future__ import annotations
 

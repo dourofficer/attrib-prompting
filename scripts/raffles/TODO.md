@@ -108,9 +108,9 @@ matters mid-sweep.
   file to retry it. A single bad round is cheaper: the loop skips that
   iteration's Evaluators and the next Judge round usually recovers.
 - **Params are per-model and recorded.** gpt-4o sends
-  `{max_tokens: 8192, temperature: 0.0}` — greedy, matching the paper's
-  decoding, so runs are reproducible. gpt-5 sends
-  `{max_completion_tokens: 16384, reasoning_effort: medium}` and no
+  `{max_tokens: 8192, temperature: 0.6}` — note the paper decodes greedily
+  (temperature 0.0); 0.6 is this repo's chosen setting. gpt-5 sends
+  `{max_completion_tokens: 16384, reasoning_effort: low}` and no
   temperature: reasoning models reject a non-default one, and reasoning tokens
   come out of the cap, so an exhausted cap surfaces as a zero-confidence
   evaluator or a skipped judge iteration rather than an error. Each `_run.json`

@@ -1,10 +1,11 @@
 """RAFFLES pipeline tests (dummy backend, subprocess, keyless).
 
-RAFFLES has no vendored code — the paper's Appendix F.3 is the prompt source —
-so instead of a vendored-parity test the prompt bytes are pinned two ways:
-golden fixtures lock the transcription (``tests/fixtures/raffles_golden_prompts
-.json``), and paper-phrase assertions keep a fixture regeneration from
-silently drifting away from the paper wording.
+RAFFLES has no vendored code, and this repo deliberately runs simplified
+prompts (see ``baselines/raffles/prompts.py``) rather than the paper's
+Appendix F.3 text. The prompt bytes are still pinned two ways: golden fixtures
+lock the current wording (``tests/fixtures/raffles_golden_prompts.json``), and
+phrase assertions keep a fixture regeneration from silently changing the
+prompts' core contract.
 """
 from __future__ import annotations
 
@@ -33,10 +34,14 @@ def _eval_json(confidence: int, reason: str = "ok") -> str:
     return f'```json\n{{"reason": "{reason}", "confidence": {confidence}}}\n```'
 
 
+def _is_judge(msgs) -> bool:
+    return "Which agent caused the failure" in msgs[-1]["content"]
+
+
 def _responder(eval_confidence: int):
-    """Judge prompts carry the F.1 template shell; everything else is an Evaluator."""
+    """Judge prompts ask the judge question; everything else is an Evaluator."""
     def respond(msgs):
-        if "Task Description" in msgs[-1]["content"]:
+        if _is_judge(msgs):
             return JUDGE_JSON
         return _eval_json(eval_confidence)
     return respond
@@ -113,55 +118,47 @@ def test_prompts_match_goldens():
         assert build_evaluator_prompt(p, RECORD, CANDIDATE) == GOLDENS[f"evaluator_{p}"]
 
 
-def test_judge_prompt_carries_the_paper_text():
-    """Key F.1/F.3 sentences, so regenerated goldens can't drift from the paper."""
+def test_judge_prompt_carries_the_core_contract():
+    """Key sentences, so regenerated goldens can't silently change the contract."""
     judge = GOLDENS["judge"]
     for phrase in (
-        "You are an intelligent assistant that takes in a task description, "
-        "and task output and complete based on requirements.",
-        "Remember, that your output should only be a json and nothing else.",
-        "**You must always output an agent name and a step number.** Null, None, "
-        'or empty values are strictly forbidden for the "agent_name" and '
-        '"step_number" fields.',
-        "1. The agent made a mistake at that step.",
-        "2. It is the first mistake step that relates to the final wrong outcome.",
-        "3. The mistake was not corrected by or correctable by later agents.",
-        "## Handling Ambiguity (Fallback Procedure)",
-        "**most pivotal in setting the final, incorrect direction.**",
-        # The stray ".**." is in the paper — the transcription keeps it.
-        "**why the agent made a mistake at that step.**. Reference the log",
+        "Which agent caused the failure, and at which step?",
+        "Pick the first uncorrected mistake that led to the wrong final outcome.",
+        "Always name one agent and one step number.",
+        "Answer with only this JSON:",
+        '"agent_name"',
+        '"step_number"',
+        '"mistake_reason"',
+        '"first_mistake"',
         '"mistake_not_corrected"',
     ):
         assert phrase in judge, phrase
 
 
-def test_evaluator_prompts_carry_the_paper_text():
-    for p, criterion in ((1, "correctly pointing out a faulty agent and step number"),
-                         (2, "finding the first mistake in the pipeline"),
-                         (3, "how this mistake was never corrected afterwards")):
+def test_evaluator_prompts_carry_the_core_contract():
+    for p, criterion in ((1, "the agent really made a mistake at that step"),
+                         (2, "it is the first mistake that led to the wrong outcome"),
+                         (3, "the mistake was never corrected later")):
         ev = GOLDENS[f"evaluator_{p}"]
         for phrase in (
-            "You are a rigorous and meticulous logic verifier",
-            "you must not be swayed by your partner's conclusion, but only by "
-            "the soundness of their argument.",
-            f"the argument provided by your partner for '{criterion}' is logical",
-            "give a confidence score between 0 to 100",
-            "## Task Log ##",
-            "## Error Step ##",
-            "## Your output format ##",
-            "0 means the argument is illogical, non-specific, or contradicts the log.",
+            f"Check the claim's argument that {criterion}.",
+            "## Log ##",
+            "## Claim ##",
+            "Answer with only this JSON:",
+            '"confidence" is an integer 0-100 for how well the argument is '
+            "supported by the log.",
         ):
             assert phrase in ev, (p, phrase)
 
 
 def test_evaluator_sees_only_its_own_rationale():
-    """Evaluator p's Error Step carries r_j^p, not the other two rationales."""
+    """Evaluator p's Claim carries r_j^p, not the other two rationales."""
     fields = {1: "mistake_reason", 2: "first_mistake", 3: "mistake_not_corrected"}
     for p, field in fields.items():
-        error_step = GOLDENS[f"evaluator_{p}"].split("## Error Step ##")[1]
-        assert f'"{field}"' in error_step
+        claim = GOLDENS[f"evaluator_{p}"].split("## Claim ##")[1]
+        assert f'"{field}"' in claim
         for other in set(fields.values()) - {field}:
-            assert f'"{other}"' not in error_step
+            assert f'"{other}"' not in claim
 
 
 def test_gt_line_is_the_only_with_gt_difference():
@@ -228,7 +225,7 @@ def test_highest_confidence_candidate_wins():
     confidences = iter([10, 10, 10, 80, 80, 80, 50, 50, 50])
 
     def respond(msgs):
-        if "Task Description" in msgs[-1]["content"]:
+        if _is_judge(msgs):
             return judges.pop(0)
         return _eval_json(next(confidences))
 
@@ -258,7 +255,7 @@ def test_unparseable_judge_skips_evaluators_and_recovers():
     state = {"judge_calls": 0}
 
     def respond(msgs):
-        if "Task Description" in msgs[-1]["content"]:
+        if _is_judge(msgs):
             state["judge_calls"] += 1
             return "not json" if state["judge_calls"] == 1 else JUDGE_JSON
         return _eval_json(95)
@@ -291,14 +288,13 @@ def test_evaluator_feedback_reaches_the_next_judge():
     backend = get_backend("dummy", responder=_responder(10))
     _run_program(toy_record(), backend, max_iters=1)
 
-    judge_prompts = [msgs[-1]["content"] for msgs in backend.calls
-                     if "Task Description" in msgs[-1]["content"]]
+    judge_prompts = [msgs[-1]["content"] for msgs in backend.calls if _is_judge(msgs)]
     assert len(judge_prompts) == 2
-    assert "## Feedback on your previous answers ##" not in judge_prompts[0]
-    assert "## Feedback on your previous answers ##" in judge_prompts[1]
-    assert "(confidence 10/100)" in judge_prompts[1]
+    assert "Feedback on your previous answers:" not in judge_prompts[0]
+    assert "Feedback on your previous answers:" in judge_prompts[1]
+    assert "10/100" in judge_prompts[1]
     # The rule check's verdict is part of the feedback too.
-    assert "(confidence 100/100)" in judge_prompts[1]
+    assert "100/100" in judge_prompts[1]
 
 
 def test_gt_flag_reaches_all_prompts():
