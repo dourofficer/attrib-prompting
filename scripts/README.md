@@ -1,7 +1,7 @@
 # scripts/
 
 Front doors for running the baselines. One subdirectory per baseline family —
-`prompting/`, `correct/`, `chief/` and `raffles/`. This README stays at
+`prompting/`, `correct/`, `chief/`, `raffles/` and `errorprobe/`. This README stays at
 `scripts/` and covers all of them.
 
 ## prompting/
@@ -182,6 +182,46 @@ termination usually stops sooner. There is no offline stage and nothing in
 `artifacts/`. For a side-by-side K=5 run that doesn't overwrite the default,
 add `EXTRA_SET="--set max_iters=5 --set method_dir=raffles.k5"`.
 
+## errorprobe/
+
+One front door for the ErrorProbe Analyzer→Verifier diagnosis (see
+[`baselines/errorprobe/README.md`](../baselines/errorprobe/README.md)):
+
+```bash
+DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/errorprobe/run.sh
+```
+
+Examples:
+
+```bash
+DATASET=ww bash scripts/errorprobe/run.sh                               # everything in the config
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/errorprobe/run.sh
+DATASET=ww MODEL=gpt-4o MODE=truncated bash scripts/errorprobe/run.sh   # the cheap mode only
+DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/errorprobe/run.sh  # preview
+```
+
+Same env knobs as the prompting scripts (`GT`, `GPU`, `START_IDX`/`END_IDX`,
+`DRY_RUN`, `OVERWRITE`, `EXTRA_SET`, `CONFIG`), plus:
+
+| var | meaning |
+|---|---|
+| `MODEL` | optional here — omit to run every model in the config |
+| `MODE` | `truncated` (vendored default: 2 calls per trajectory) or `backward` (backward tracing: ~2–3 calls per examined turn) — omit for the config's `modes` list |
+
+Config resolution is the same shape as prompting's, but only the closed-source
+configs ship: `baselines/errorprobe/configs/<DATASET>-api.yaml` (`gpt-4o`,
+`gpt-5`). Add `<DATASET>.yaml` for local vLLM models and the script picks it up
+— [`baselines/errorprobe/configs/README.md`](../baselines/errorprobe/configs/README.md)
+has the template.
+
+Two ErrorProbe-specific notes. The default GT setting is **`without`** (the
+vendored prompts never carry the task answer), so results land in
+`outputs-nogt/` unless `GT=with`. And the two modes write to distinct method
+directories (`errorprobe/`, `errorprobe_bt/`), so they never collide; the
+shipped `correct-error` config enables `truncated` only — enable `backward`
+there deliberately, it multiplies the call count by the trace length. There is
+no offline stage and nothing in `artifacts/`.
+
 ## I/O — what each operation reads and writes
 
 Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
@@ -199,6 +239,8 @@ Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
 | `… → baselines.chief.predict` | the corpus + the RAG artifact above; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/chief/<id>.json` (+ `_run.json`), each with all six stage responses in `calls` |
 | `scripts/raffles/run.sh` | `baselines/raffles/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
 | `… → baselines.raffles.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/raffles/<id>.json` (+ `_run.json`), each with the full Judge/Evaluator transcript in `calls` and a per-iteration audit in `iterations` |
+| `scripts/errorprobe/run.sh` | `baselines/errorprobe/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
+| `… → baselines.errorprobe.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<errorprobe\|errorprobe_bt>/<id>.json` (+ `_run.json`), each with the full Analyzer/Verifier (and backward-walk) transcript in `calls` |
 | `… → baselines.prompting.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing `<gt-root>/…/<id>.json` (resume ledger); `$OPENAI_API_KEY` for API models; `../hub/<checkpoint>` for vLLM | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (one per trajectory, atomic) and `…/<METHOD>/_run.json` (run snapshot) |
 | `baselines.prompting.report --config configs/report_<ds>.yaml [--gt without]` | `data/<ds>/<subset>/*.json` (split universe only); `<gt-root>/<ds>/<subset>/<model>/<method>/[0-9]*.json` | `<gt-root>/<ds>/reports/completion_status.tsv`, `…/reports/<model>/<subset>/comparison_by_seed.tsv`, `…/reports/summary_mean_over_seeds.tsv` |
 

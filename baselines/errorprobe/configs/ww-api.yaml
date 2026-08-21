@@ -1,0 +1,38 @@
+# ErrorProbe inference config — Who&When (ww), closed-source API models.
+# Requires the model's API key in the environment (default: OPENAI_API_KEY).
+models:  [gpt-4o, gpt-5]
+subsets: [algorithm-generated, hand-crafted]
+
+data_dir:     data/ww
+outputs_root: outputs/ww
+
+# Vendored setting: the ErrorProbe prompts never carry the task answer, so the
+# default tree is outputs-nogt/.
+gt: without
+
+# Which vendored configuration(s) to run: truncated (the shipped default —
+# Analyzer over the last 15 turns, 2 calls per trajectory) and/or backward
+# (backward_tracing.enabled — full trace, ~2-3 calls per examined turn).
+modes: [truncated, backward]
+
+start_idx: 0
+end_idx:   null
+
+# A spec's `params` are sent to the API verbatim — nothing else is added, and
+# _run.json records exactly what was sent. temperature/max_tokens mirror the
+# vendored config.yaml model block (0.7 / 4000); the vendored per-call
+# overrides (Analyzer 2000, Verifier 1500 at 0.3, tracing 200-500) cannot vary
+# per call through the shared backend — see IMPLEMENTATION.md.
+model_specs:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    params: {max_tokens: 4000, temperature: 0.7}
+  gpt-5:
+    backend: openai
+    model: gpt-5
+    # No temperature: reasoning models reject a non-default one. The cap is
+    # generous because reasoning tokens are drawn from it; an exhausted cap
+    # returns empty content, which parses to the vendored failure sentinel
+    # rather than an error.
+    params: {max_completion_tokens: 16384, reasoning_effort: low}

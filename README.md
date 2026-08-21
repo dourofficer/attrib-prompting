@@ -82,6 +82,18 @@ DATASET=ww MODEL=gpt-4o bash scripts/raffles/run.sh
 DATASET=ww MODEL=gpt-4o MAX_ITERS=5 bash scripts/raffles/run.sh   # the paper's K=5
 ```
 
+The ErrorProbe baseline (Analyzer→Verifier diagnosis from the authors'
+simplified reproduction, vendored under `vendored/ERRORPROBE/`; two modes —
+`truncated` reads the last 15 turns, `backward` walks the full trace from the
+symptom; see [`baselines/errorprobe/README.md`](baselines/errorprobe/README.md)).
+Its vendored prompts carry no task answer, so default results land in
+`outputs-nogt/`:
+
+```bash
+DATASET=ww MODEL=gpt-4o bash scripts/errorprobe/run.sh
+DATASET=ww MODEL=gpt-4o MODE=truncated bash scripts/errorprobe/run.sh   # cheap mode only
+```
+
 Or the full grid per dataset:
 
 ```bash
@@ -160,6 +172,7 @@ baselines/prompting/           the three methods (verbatim prompts), predict/swe
 baselines/correct/             CORRECT baseline: schemagen → similarity → detection
 baselines/chief/               CHIEF baseline: ragprep → six-call causal-graph detection
 baselines/raffles/             RAFFLES baseline: iterative Judge-Evaluator loop
+baselines/errorprobe/          ErrorProbe baseline: Analyzer→Verifier, truncated or backward
 data/                          corpora   ·  vendored/  upstream code, verbatim
 outputs/, outputs-nogt/        committed results, with-GT and without-GT
 artifacts/                     committed inputs a run consumes, not results:
