@@ -117,7 +117,15 @@ def test_nogt_root_mapping():
     assert nogt_root("outputs/ww") == "outputs-nogt/ww"
     assert nogt_root("outputs/ww/reports") == "outputs-nogt/ww/reports"
     assert nogt_root("outputs") == "outputs-nogt"
+    # the representation-based family spells the setting out in the root name
+    assert nogt_root("outputs-rb-gt/ww") == "outputs-rb-nogt/ww"
+    assert nogt_root("outputs-rb-gt") == "outputs-rb-nogt"
+    assert nogt_root("outputs-rb-gt/ww/hand-crafted/qwen3.5-9b") == (
+        "outputs-rb-nogt/ww/hand-crafted/qwen3.5-9b"
+    )
     with pytest.raises(ValueError):
         nogt_root("results/ww")
     with pytest.raises(ValueError):
         nogt_root("outputs-x/ww")
+    with pytest.raises(ValueError):
+        nogt_root("outputs-rb-nogt/ww")

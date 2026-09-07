@@ -1,0 +1,72 @@
+# StepFinder on correct-error. Every subset maps to the Hand-Crafted training
+# set: these traces use Planner/WebSurfer/Coder agents, closer to Magentic-One
+# than to the AutoGen `*_Expert` team.
+models:  [qwen3-embedding-0.6b, qwen3.5-9b, deepseek-8b, qwen3.5-4b, qwen3-14b, qwen3.5-27b]
+subsets: [arc, gaia, hotpot, math500, mmlu_pro, musique, wikimqa]
+data_dir: data/correct-error
+outputs_root: outputs-rb-gt/correct-error
+gt: without
+
+default_train_set: hand-crafted
+default_preset: hc
+
+eval_seeds: [1, 2, 3]
+splits: {train: 0.3, val: 0.2, test: 0.5}
+
+# Training. Family A ("regen") learns from the regenerated failures that ship
+# with the paper's code; family B ("in-corpus") learns from the 30% partition
+# the evaluation protocol already sets aside. See ../README.md.
+protocols: [regen]
+train_data_root: vendored/StepFinder/data
+
+# Five training seeds, each its own method directory (stepfinder.s42 … s46).
+seeds: [42, 43, 44, 45, 46]
+
+# Checkpoints are picked on data held out of *training*. The vendored rule
+# picks on the corpus being scored; `model_selection: vendored` reproduces it
+# for a parity check and refuses to write predictions.
+model_selection: val
+val_frac: 0.1
+# Floors on the holdout. Below either, early stopping is skipped and the
+# full budget is trained: accuracy on a handful of trajectories is noise,
+# and selecting on noise returns a barely-trained network.
+val_min_tasks: 4     # distinct questions
+val_min_size: 20     # trajectories
+
+# The agent embedding is a text embedding of the agent's name, and this repo's
+# role strings ("Orchestrator (thought)") are not the training corpus's
+# ("Orchestrator"). Normalizing puts them back on the same vocabulary.
+agent_normalize: standardize
+
+epochs: 50
+# A floor on optimizer steps. 50 epochs over the vendored training corpus is
+# ~8,000 updates; over a 91-trajectory in-corpus partition it is ~300, far
+# fewer than the learning rate was tuned for. Family A already exceeds this
+# floor, so only family B is affected.
+min_train_steps: 5000
+batch_size: 16
+patience: 10
+top_k: 3
+
+model_specs:
+  qwen3-embedding-0.6b:
+    model_path: ../hub/Qwen/Qwen3-Embedding-0.6B
+    dtype: fp16
+  qwen3.5-9b:
+    model_path: ../hub/Qwen/Qwen3.5-9B
+    dtype: fp16
+  # The manuscript's scale study (4B -> 9B -> 14B -> 27B). Qwen3.5 ships no dense 14B,
+  # so the 14B point is Qwen3-14B, the previous generation of the same family.
+  qwen3.5-4b:
+    model_path: ../hub/Qwen/Qwen3.5-4B
+    dtype: fp16
+  qwen3-14b:
+    model_path: ../hub/Qwen/Qwen3-14B
+    dtype: fp16
+  qwen3.5-27b:
+    model_path: ../hub/Qwen/Qwen3.5-27B
+    dtype: fp16
+  deepseek-8b:
+    model_path: ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    tokenizer: baselines/prompting/tokenizers/deepseek-8b
+    dtype: fp16

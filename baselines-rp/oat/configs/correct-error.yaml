@@ -1,0 +1,37 @@
+# OAT on correct-error — local extractors only. There is no API path: the method reads
+# hidden states, which a chat endpoint does not expose.
+models:  [qwen3.5-9b, deepseek-8b]
+subsets: [arc, gaia, hotpot, math500, mmlu_pro, musique, wikimqa]
+data_dir: data/correct-error
+outputs_root: outputs-rb-gt/correct-error
+
+# The vendored text carries no answer, so 'without' is the faithful default;
+# it mirrors outputs_root to outputs-rb-nogt/correct-error.
+gt: without
+
+# Five training seeds, each its own method directory (oat.s42 … oat.s46) —
+# the vendored 42..46, reported as a spread rather than averaged away.
+seeds: [42, 43, 44, 45, 46]
+
+# Representation knobs (paper Table 6).
+layer: -1          # last layer; later layers beat earlier ones (paper Fig. 6)
+aggregation: mean  # mean-pool a step's tokens; beats last-token (paper Fig. 9)
+latent_dim: 64     # PCA target dimension
+
+# Detection knobs.
+top_k: 3
+alpha: 0.2         # conformal miscoverage rate
+
+# Training: successes only, from the corpus vendored with the paper's code.
+train_dir: vendored/OAT/dataset/MCP-atlas/Qwen3.5-27B
+epochs: 300
+patience: 20
+
+model_specs:
+  qwen3.5-9b:
+    model_path: ../hub/Qwen/Qwen3.5-9B
+    dtype: bf16
+  deepseek-8b:
+    model_path: ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    tokenizer: baselines/prompting/tokenizers/deepseek-8b
+    dtype: bf16

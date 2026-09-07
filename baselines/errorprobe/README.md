@@ -72,10 +72,12 @@ vendored code, running with or without memory provably produces identical
 predictions, so building the memory would only add cost. The finding, with
 line references, is in [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
-## The two modes
+## The three modes
 
 The vendored config chooses between two prediction paths; we ship both, as
-separate method directories that the report scores side by side.
+separate method directories that the report scores side by side. A third mode,
+`errorprobe_paper`, rebuilds the paper's own pipeline, which the vendored code
+does not contain; it is described in its own section below.
 
 **`errorprobe` — truncated-history mode** (the vendored default). Two model
 calls per trajectory:
@@ -111,6 +113,58 @@ from the strongest observation (in practice: the final turn). The Verifier
 then reviews the result, exactly as in the other mode. Steps here are
 absolute — no remap needed.
 
+## The third mode: `errorprobe_paper`
+
+**The idea in one sentence.** Read the trace the way the paper says to: tag
+each step with the MAST failure taxonomy, keep only the steps the failure
+depended on, and let a three-role team (propose, check with a probe, judge)
+name the decisive error.
+
+This mode is built from the paper (Section 4, Algorithm 1) and from the MAST
+authors' own annotator, because the vendored code implements none of it. It
+has no parity test; golden fixtures pin every prompt and
+[`IMPLEMENTATION.md`](IMPLEMENTATION.md) records every choice the paper leaves
+open. It lives in [`paper/`](paper/), plugs in as `--mode paper`, and never
+touches the other two modes. Four rounds of calls per trajectory:
+
+| round | call | asks the model to | consumes |
+|---|---|---|---|
+| 1 | tagger (one per chunk) | tag steps with MAST failure modes, quoting the step as evidence | the task, the 14 MAST definitions, a one-line index of earlier steps, the chunk's steps in full |
+| 1 | dependency (one per chunk) | list which earlier steps each step's content uses (cites, executes, answers, verifies, follows) | the task, the one-line index, the chunk's steps |
+| 2 | Strategist | propose up to 3 hypotheses (step, agent, mode, rationale, which probe to run) | the task, the agents and their roles, the tags, the **condensed trace** |
+| 3 | Investigator (one per hypothesis) | run the probe and report evidence: an execution log and diff (`code_exec`) or checked pre/post-conditions (`logic_probe`); never a bare assertion | the hypothesis, its step in full, its inputs and outputs in the graph, the final step |
+| 4 | Arbiter | pick the decisive error with a confidence; say whether the pattern is worth remembering; emit a signature and a guard | the surviving hypotheses with their evidence; the filtered ones as one line each |
+
+Between rounds 1 and 2 the backward tracing runs without a model: the LLM
+edges join structural ones the trace format makes explicit (code to its exit
+code, an instruction to its addressee's turn), a breadth-first search walks
+incoming edges from the last step, and every step it never reaches is masked
+out of the condensed trace. If the search leaves too few steps, adjacent turns
+are added as a floor. When the condensed trace exceeds its budget, tagged
+steps, the task and the symptom stay and the rest go furthest-from-the-symptom
+first: that is how the MAST tags act as priors on the trace.
+
+Calls per trajectory: `2C + 2 + H`, where `C` is the number of chunks (about
+one per ten steps) and `H ≤ 3`. A ten-step alg-gen trace costs 7 calls, a
+median hand-crafted trace 13, the longest 31.
+
+What differs from the paper, and why:
+
+| the paper | this mode |
+|---|---|
+| the Investigator re-runs code in a sandbox and probes pre/post-conditions with tools | both probes are prompts: `code_exec` asks the model to trace the code as an interpreter would and compare with the recorded output; `logic_probe` asks it to check conditions against the steps that establish them. No code runs (user decision) |
+| a verified episodic memory feeds the Strategist and learns from the Arbiter | absent in this pass. The hooks stay: the Strategist renders a patterns section only when given patterns, and the Arbiter emits `novel_and_robust`, a signature and a guard, recorded in `memory_candidate` with the paper's τ = 0.7 |
+| MAST priors enter the backward trace (`BackwardTrace(x, MastPriors)`) | tags steer the budget trimming and the Strategist; they do not enter the dependency prompt, so both round-1 families go out together |
+| a dependency graph over the whole trace | LLM edges per chunk plus structural edges; the tagger and the parser see the trace in chunks of about 12k characters with absolute step numbers |
+| the Arbiter "filters out hypotheses where the evidence is empty or inconclusive" | the program filters first and shows the Arbiter what survived; when nothing survives it asks for a best guess at low confidence and records `arbiter_saw_only_inconclusive` |
+| (unspecified) | an unreadable Arbiter answer falls back to the best-evidenced hypothesis, as the vendored backward mode's synthesis step does; a Strategist that proposes nothing yields a null prediction |
+
+The output document adds what each stage produced: `structure` (the parse),
+`tags`, `graph`, `erf` (what was kept and what was masked), `hypotheses`,
+`evidence`, `verdict`, `memory_candidate`, `failure_stage` and
+`paper_params`. `calls` records every response with its role and, for chunked
+and per-hypothesis calls, which chunk or hypothesis it served.
+
 ## GT settings
 
 The vendored prompts never contain the task's answer, so `--gt without` is the
@@ -119,7 +173,7 @@ raffles; the inverse of prompting and chief). Default results land in
 `outputs-nogt/`. `--gt with` appends the prompting baselines' exact
 `The Answer for the problem is: ...` line to the task text in every prompt
 that carries the task (the Analyzer; the backward walk's root-cause and
-synthesis calls) and writes under `outputs/`.
+synthesis calls; every paper-mode prompt) and writes under `outputs/`.
 
 ## Layout
 
@@ -128,15 +182,20 @@ synthesis calls) and writes under `outputs/`.
   taxonomy table.
 - `backward.py` — the backward-tracing port: trace index, working memory and
   the walk, with their prompts inline, as generators the runner can drive.
-- `methods.py` — the two per-trajectory programs (`errorprobe`,
+- `methods.py` — the two vendored per-trajectory programs (`errorprobe`,
   `errorprobe_bt`) and the output-document mapping.
+- `paper/` — the paper mode: `structure.py` (the per-step parse and action
+  classifier), `tagger.py` (the MAST step-level tagger), `graph.py`
+  (dependency edges, backward search, masking), `team.py` (Strategist,
+  Investigator, Arbiter) and `program.py` (the four-round program). The MAST
+  definitions it reads are vendored under `vendored/MAST/`.
 - `predict.py` — one `(model, subset, mode)` per invocation; `--mode`,
-  `--gt`, `--method-dir`.
+  `--gt`, `--method-dir`, and the paper mode's knobs.
 - `sweep.py` — the models × subsets × modes grid; shells out one child per
   combo.
 - `report.py` — thin alias of `baselines.prompting.report`.
-- `configs/` — `<ds>-api.yaml` (what to run) and `report_<ds>.yaml` (what to
-  score); see [`configs/README.md`](configs/README.md) to add local models.
+- `configs/` — `<ds>.yaml` / `<ds>-api.yaml` (what to run) and
+  `report_<ds>.yaml` (what to score); see [`configs/README.md`](configs/README.md).
 
 ## Running
 
@@ -144,11 +203,31 @@ Everything runs from the repo root. The front door is
 `scripts/errorprobe/run.sh`:
 
 ```bash
-DATASET=ww bash scripts/errorprobe/run.sh                                # both modes, both models
-DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/errorprobe/run.sh
-DATASET=ww MODEL=gpt-4o MODE=truncated bash scripts/errorprobe/run.sh    # the cheap mode only
+# Local checkpoints (configs/<ds>.yaml: qwen3.5-9b, deepseek-8b)
+DATASET=ww GPU=0 bash scripts/errorprobe/run.sh                           # both vendored modes, both local models
+DATASET=ww MODEL=qwen3.5-9b MODE=paper GPU=0 bash scripts/errorprobe/run.sh  # the paper pipeline (opt-in)
+
+# Closed-source models (configs/<ds>-api.yaml: gpt-4o, gpt-5)
+export OPENAI_API_KEY=sk-...
+DATASET=ww MODEL=gpt-4o bash scripts/errorprobe/run.sh                   # truncated + backward
+DATASET=ww SUBSET=hand-crafted MODEL=gpt-5 MODE=truncated bash scripts/errorprobe/run.sh
+DATASET=ww MODEL=gpt-5 MODE=paper bash scripts/errorprobe/run.sh
+DATASET=correct-error MODEL=gpt-4o bash scripts/errorprobe/run.sh        # truncated only (config)
 DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/errorprobe/run.sh  # preview
 ```
+
+The front door picks whichever config declares `MODEL`; without `MODEL` it
+runs every model in the local config. API models take the same path as the
+prompting baselines: the spec's `params` go to the API verbatim (gpt-4o
+`{max_tokens: 4000, temperature: 0.7}`, the vendored model block; gpt-5
+`{max_completion_tokens: 16384, reasoning_effort: low}`, since reasoning
+models reject a temperature), and `_run.json` records what was sent. On API
+models the paper mode runs its full budget: three hypotheses, 12k-character
+chunks, a 20k-character condensed trace.
+
+The paper mode is opt-in: the shipped configs list only the two vendored
+modes under `modes:`, so `MODE=paper` (or `--set modes=[paper]`) is how it
+runs. Its knobs sit under the configs' `paper:` key.
 
 Runs resume on file existence — rerun the same command after a crash and only
 the missing trajectories execute. Then build the tables (CPU only):
@@ -168,4 +247,14 @@ roughly 2–3 calls per examined turn, with the walk bounded at 100 turns. On
 long corpora (hand-crafted, magentic) expect on the order of 100–300 calls
 per trajectory; the shipped `correct-error` config therefore enables the
 truncated mode only (2,226 trajectories — enable `backward` there
-deliberately).
+deliberately). The paper mode sits between the two: `2C + 2 + H` bounded
+calls, where `C` grows by one per ten steps and `H` is at most 3, so 7 calls
+on a ten-step trace and about 13 on a median hand-crafted one. Its tagger
+prompt is the largest in this baseline (the 14 MAST definitions plus a 12k
+character chunk, about 8k tokens); `include_mast_examples` adds the MAST
+authors' worked examples, another 17k tokens, and does not fit a 32k window.
+The shipped local configs decode `qwen3.5-9b` on a deliberate handicap in
+every mode (512 generation tokens, temperature 1.0, a 16k window) and give
+its paper mode one hypothesis on a 10k-character condensed trace, so its cost
+sits close to the vendored truncated mode; `deepseek-8b` runs the full budget.
+[`configs/README.md`](configs/README.md) explains the choice.

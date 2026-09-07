@@ -35,11 +35,12 @@ def _eval_json(confidence: int, reason: str = "ok") -> str:
 
 
 def _is_judge(msgs) -> bool:
-    return "Which agent caused the failure" in msgs[-1]["content"]
+    """Only the Evaluator prompt carries an Error Step section to verify."""
+    return "## Error Step ##" not in msgs[-1]["content"]
 
 
 def _responder(eval_confidence: int):
-    """Judge prompts ask the judge question; everything else is an Evaluator."""
+    """Judge prompts carry no Error Step; everything else is an Evaluator."""
     def respond(msgs):
         if _is_judge(msgs):
             return JUDGE_JSON
@@ -122,10 +123,14 @@ def test_judge_prompt_carries_the_core_contract():
     """Key sentences, so regenerated goldens can't silently change the contract."""
     judge = GOLDENS["judge"]
     for phrase in (
-        "Which agent caused the failure, and at which step?",
-        "Pick the first uncorrected mistake that led to the wrong final outcome.",
-        "Always name one agent and one step number.",
-        "Answer with only this JSON:",
+        "analyzing a multi-agent conversation history",
+        "**You must always output an agent name and a step number.**",
+        "1. The agent made a mistake at that step.",
+        "2. It is the first mistake step that relates to the final wrong outcome.",
+        "3. The mistake was not corrected by or correctable by later agents.",
+        "## Handling Ambiguity (Fallback Procedure)",
+        "Please answer in the format:",
+        "Remember, that your output should only be a json and nothing else.",
         '"agent_name"',
         '"step_number"',
         '"mistake_reason"',
@@ -136,17 +141,18 @@ def test_judge_prompt_carries_the_core_contract():
 
 
 def test_evaluator_prompts_carry_the_core_contract():
-    for p, criterion in ((1, "the agent really made a mistake at that step"),
-                         (2, "it is the first mistake that led to the wrong outcome"),
-                         (3, "the mistake was never corrected later")):
+    for p, criterion in ((1, "correctly pointing out a faulty agent and step number"),
+                         (2, "finding the first mistake in the pipeline"),
+                         (3, "how this mistake was never corrected afterwards")):
         ev = GOLDENS[f"evaluator_{p}"]
         for phrase in (
-            f"Check the claim's argument that {criterion}.",
-            "## Log ##",
-            "## Claim ##",
-            "Answer with only this JSON:",
-            '"confidence" is an integer 0-100 for how well the argument is '
-            "supported by the log.",
+            "You are a rigorous and meticulous logic verifier",
+            f"Your task is **ONLY** to think whether the argument provided by "
+            f"your partner for '{criterion}' is logical.",
+            "## Task Log ##",
+            "## Error Step ##",
+            "## Your output format ##",
+            "confidence score between 0 to 100",
         ):
             assert phrase in ev, (p, phrase)
 
@@ -155,7 +161,7 @@ def test_evaluator_sees_only_its_own_rationale():
     """Evaluator p's Claim carries r_j^p, not the other two rationales."""
     fields = {1: "mistake_reason", 2: "first_mistake", 3: "mistake_not_corrected"}
     for p, field in fields.items():
-        claim = GOLDENS[f"evaluator_{p}"].split("## Claim ##")[1]
+        claim = GOLDENS[f"evaluator_{p}"].split("## Error Step ##")[1]
         assert f'"{field}"' in claim
         for other in set(fields.values()) - {field}:
             assert f'"{other}"' not in claim
@@ -290,11 +296,11 @@ def test_evaluator_feedback_reaches_the_next_judge():
 
     judge_prompts = [msgs[-1]["content"] for msgs in backend.calls if _is_judge(msgs)]
     assert len(judge_prompts) == 2
-    assert "Feedback on your previous answers:" not in judge_prompts[0]
-    assert "Feedback on your previous answers:" in judge_prompts[1]
-    assert "10/100" in judge_prompts[1]
+    assert "## Feedback on your previous answers ##" not in judge_prompts[0]
+    assert "## Feedback on your previous answers ##" in judge_prompts[1]
+    assert "confidence 10/100" in judge_prompts[1]
     # The rule check's verdict is part of the feedback too.
-    assert "100/100" in judge_prompts[1]
+    assert "confidence 100/100" in judge_prompts[1]
 
 
 def test_gt_flag_reaches_all_prompts():

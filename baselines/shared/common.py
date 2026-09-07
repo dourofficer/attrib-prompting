@@ -65,15 +65,27 @@ def standardize_role(role: str) -> str:
 def nogt_root(path: str) -> str:
     """Map a with-GT output root to its without-GT sibling.
 
-    Convention: ``outputs/<...>`` ↔ ``outputs-nogt/<...>`` — same inner layout,
-    sibling root, so the two settings never collide.
+    Two layouts are recognized, both keeping the inner path identical so the
+    two GT settings never collide:
+
+    - the prompting-based tree — ``outputs/<...>`` ↔ ``outputs-nogt/<...>``;
+    - a family tree that spells the setting out, which the
+      representation-based baselines use — ``outputs-rb-gt/<...>`` ↔
+      ``outputs-rb-nogt/<...>``.
+
+    Any other root raises. A root this function cannot map is a layout it does
+    not know, and guessing would file results under the wrong tree.
     """
     path = str(path)
-    if path == "outputs" or path.startswith("outputs/"):
-        return "outputs-nogt" + path[len("outputs"):]
+    head, sep, rest = path.partition("/")
+    if head == "outputs":
+        return "outputs-nogt" + sep + rest
+    if head.startswith("outputs-") and head.endswith("-gt"):
+        return head[: -len("-gt")] + "-nogt" + sep + rest
     raise ValueError(
         f"cannot derive the without-GT root for {path!r}: expected a path under "
-        "'outputs/' (set the root explicitly if you use a custom layout)"
+        "'outputs/', or a root named 'outputs-<family>-gt' (set the root "
+        "explicitly if you use a custom layout)"
     )
 
 

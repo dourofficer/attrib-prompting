@@ -5,7 +5,9 @@ writes one JSON file per trajectory under ``{output}/<method dir>/``, each
 carrying the full call transcript in ``calls``. ``--mode truncated`` (the
 vendored default configuration) writes under ``errorprobe/``; ``--mode
 backward`` (the vendored code's optional backward-tracing configuration)
-writes under ``errorprobe_bt/``.
+writes under ``errorprobe_bt/``; ``--mode paper`` (the paper's own pipeline,
+built from the paper since the vendored code omits it: MAST tagger, dependency
+graph, Strategist/Investigator/Arbiter) writes under ``errorprobe_paper/``.
 
 GT setting (GUIDE.md "GT settings"): the vendored prompts never carry the task
 answer, so ``--gt without`` is the vendored-faithful setting **and the
@@ -30,6 +32,7 @@ python -m baselines.errorprobe.predict \\
 from __future__ import annotations
 
 import argparse
+import functools
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,9 +41,11 @@ from baselines.shared.runner import OutputWriter, run_batched, run_streaming
 from baselines.prompting.predict import build_backend, load_records, _bool
 
 from .methods import METHOD, METHOD_BT, errorprobe_bt_program, errorprobe_program
+from .paper.program import METHOD_PAPER, PAPER_DEFAULTS, errorprobe_paper_program
 
 MODES = {"truncated": (METHOD, errorprobe_program),
-         "backward": (METHOD_BT, errorprobe_bt_program)}
+         "backward": (METHOD_BT, errorprobe_bt_program),
+         "paper": (METHOD_PAPER, errorprobe_paper_program)}
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,15 +57,35 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--input", required=True, help="Subset directory of trajectory JSONs.")
     p.add_argument("--output", required=True,
                    help="Model-level output directory; files land in "
-                        "{output}/errorprobe/ or {output}/errorprobe_bt/.")
+                        "{output}/errorprobe/, {output}/errorprobe_bt/ or "
+                        "{output}/errorprobe_paper/.")
     p.add_argument("--mode", default="truncated", choices=sorted(MODES),
                    help="'truncated' is the vendored default configuration "
                         "(Analyzer over the last 15 turns); 'backward' is its "
                         "optional backward-tracing configuration (full trace, "
-                        "many calls per trajectory).")
+                        "many calls per trajectory); 'paper' is the paper's "
+                        "pipeline (tagger, dependency graph, diagnosis team; "
+                        "about 2 calls per 10 steps plus 5).")
     p.add_argument("--method-dir", default=None,
                    help="Output directory name override (default: the mode's "
-                        f"method name, {METHOD} or {METHOD_BT}).")
+                        f"method name, {METHOD}, {METHOD_BT} or {METHOD_PAPER}).")
+    # Paper-mode knobs (ignored by the other modes).
+    p.add_argument("--max-hypotheses", type=int, default=PAPER_DEFAULTS["max_hypotheses"],
+                   help="paper mode: hypotheses the Strategist may propose, one "
+                        "Investigator call each.")
+    p.add_argument("--chunk-chars", type=int, default=PAPER_DEFAULTS["chunk_chars"],
+                   help="paper mode: rendered characters per tagger/dependency chunk.")
+    p.add_argument("--condensed-chars", type=int, default=PAPER_DEFAULTS["condensed_chars"],
+                   help="paper mode: budget for the condensed trace the team reads.")
+    p.add_argument("--include-mast-examples", type=_bool,
+                   default=PAPER_DEFAULTS["include_mast_examples"],
+                   help="paper mode: add the MAST authors' worked examples (~17k "
+                        "tokens) to every tagger prompt.")
+    p.add_argument("--sequential-edges", default=PAPER_DEFAULTS["sequential_edges"],
+                   choices=["fallback", "always"],
+                   help="paper mode: 'fallback' adds turn-to-turn edges only when "
+                        "the dependency graph leaves too few steps; 'always' adds "
+                        "them everywhere (no masking ever happens).")
     p.add_argument("--backend", default="vllm", choices=["vllm", "openai", "dummy"])
     p.add_argument("--gt", default="without", choices=["with", "without"],
                    help="'without' matches the vendored prompts, which never "
@@ -100,6 +125,14 @@ def main() -> None:
     method, program = MODES[args.mode]
     method_dir = args.method_dir or method
     include_gt = args.gt == "with"
+    paper_params = None
+    if args.mode == "paper":
+        paper_params = {"max_hypotheses": args.max_hypotheses,
+                        "chunk_chars": args.chunk_chars,
+                        "condensed_chars": args.condensed_chars,
+                        "include_mast_examples": args.include_mast_examples,
+                        "sequential_edges": args.sequential_edges}
+        program = functools.partial(program, **paper_params)
 
     writer = OutputWriter(Path(args.output) / method_dir, overwrite=args.overwrite)
     done = writer.done_ids()
@@ -130,6 +163,7 @@ def main() -> None:
         "n_already_done": len(done),
         "n_remaining": len(remaining),
         "resumed": bool(done),
+        **({"paper_params": paper_params} if paper_params else {}),
     })
 
     def on_done(record: dict, pred: dict) -> None:

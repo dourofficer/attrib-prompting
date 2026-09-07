@@ -1,8 +1,16 @@
 # scripts/
 
 Front doors for running the baselines. One subdirectory per baseline family —
-`prompting/`, `correct/`, `chief/`, `raffles/` and `errorprobe/`. This README stays at
-`scripts/` and covers all of them.
+`prompting/`, `correct/`, `chief/`, `raffles/`, `errorprobe/`, `oat/` and
+`stepfinder/`. This
+README stays at `scripts/` and covers all of them.
+
+The first five are *prompting-based*: they ask a model to read a log and name
+the step that went wrong, they live in `baselines/`, and they write to
+`outputs/` or `outputs-nogt/`. `oat/` and `stepfinder/` are the
+*representation-based*
+baseline: it reads a model's hidden states instead of prompting it, it lives in
+`baselines-rp/`, and it writes to `outputs-rb-gt/` or `outputs-rb-nogt/`.
 
 ## prompting/
 
@@ -197,6 +205,7 @@ Examples:
 DATASET=ww bash scripts/errorprobe/run.sh                               # everything in the config
 DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/errorprobe/run.sh
 DATASET=ww MODEL=gpt-4o MODE=truncated bash scripts/errorprobe/run.sh   # the cheap mode only
+DATASET=ww MODEL=gpt-4o MODE=paper bash scripts/errorprobe/run.sh       # the paper pipeline (opt-in)
 DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/errorprobe/run.sh  # preview
 ```
 
@@ -206,26 +215,129 @@ Same env knobs as the prompting scripts (`GT`, `GPU`, `START_IDX`/`END_IDX`,
 | var | meaning |
 |---|---|
 | `MODEL` | optional here — omit to run every model in the config |
-| `MODE` | `truncated` (vendored default: 2 calls per trajectory) or `backward` (backward tracing: ~2–3 calls per examined turn) — omit for the config's `modes` list |
+| `MODE` | `truncated` (vendored default: 2 calls per trajectory), `backward` (backward tracing: ~2–3 calls per examined turn) or `paper` (the paper's own pipeline: tagger, dependency graph, diagnosis team; `2C + 2 + H` calls, about one chunk `C` per ten steps and `H ≤ 3` hypotheses) — omit for the config's `modes` list, which never includes `paper` |
 
-Config resolution is the same shape as prompting's, but only the closed-source
-configs ship: `baselines/errorprobe/configs/<DATASET>-api.yaml` (`gpt-4o`,
-`gpt-5`). Add `<DATASET>.yaml` for local vLLM models and the script picks it up
-— [`baselines/errorprobe/configs/README.md`](../baselines/errorprobe/configs/README.md)
-has the template.
+Config resolution is the same shape as prompting's, with the local config
+checked first: `baselines/errorprobe/configs/<DATASET>.yaml` holds the local
+vLLM models (`qwen3.5-9b`, `deepseek-8b`) and `<DATASET>-api.yaml` the
+closed-source ones (`gpt-4o`, `gpt-5`). The script takes whichever declares
+`MODEL`; with no `MODEL` it runs the local config's `models:` list.
+[`baselines/errorprobe/configs/README.md`](../baselines/errorprobe/configs/README.md)
+documents the keys, including the handicapped `qwen3.5-9b` spec.
 
 Two ErrorProbe-specific notes. The default GT setting is **`without`** (the
 vendored prompts never carry the task answer), so results land in
-`outputs-nogt/` unless `GT=with`. And the two modes write to distinct method
-directories (`errorprobe/`, `errorprobe_bt/`), so they never collide; the
-shipped `correct-error` config enables `truncated` only — enable `backward`
-there deliberately, it multiplies the call count by the trace length. There is
-no offline stage and nothing in `artifacts/`.
+`outputs-nogt/` unless `GT=with`. And the three modes write to distinct method
+directories (`errorprobe/`, `errorprobe_bt/`, `errorprobe_paper/`), so they
+never collide; the shipped `correct-error` config enables `truncated` only —
+enable `backward` there deliberately, it multiplies the call count by the
+trace length. The paper mode is opt-in everywhere (`MODE=paper`); its knobs
+live under the configs' `paper:` key and reach the child as
+`--max-hypotheses` and friends (`EXTRA_SET="--set paper.max_hypotheses=5"`).
+There is no offline stage and nothing in `artifacts/`.
+
+## oat/
+
+One front door for the OAT representation-based baseline — extract hidden
+states, train a neural CDE on successful trajectories, score the failures (see
+[`baselines-rp/oat/README.md`](../baselines-rp/oat/README.md)):
+
+```bash
+DATASET=<ww|correct-error|traceelephant> [MODEL=<extractor>] [SUBSET=<subset>] bash scripts/oat/run.sh
+```
+
+Examples:
+
+```bash
+DATASET=ww MODEL=qwen3.5-9b GPU=0 bash scripts/oat/run.sh              # both subsets
+DATASET=ww SUBSET=hand-crafted MODEL=qwen3.5-9b GPU=0 bash scripts/oat/run.sh
+DATASET=ww MODEL=qwen3.5-9b STAGES=states-train,train bash scripts/oat/run.sh  # train only
+DATASET=ww DRY_RUN=1 bash scripts/oat/run.sh                          # preview
+```
+
+Same env knobs as the other scripts (`GT`, `GPU`, `START_IDX`/`END_IDX`,
+`DRY_RUN`, `OVERWRITE`, `EXTRA_SET`, `CONFIG`), plus:
+
+| var | meaning |
+|---|---|
+| `MODEL` | the *extractor* — a local checkpoint to read hidden states from, not a model to prompt. Omit to run every one in the config |
+| `STAGES` | subset of `states-train,train,states-test,score`; each is idempotent and resumable |
+| `SEEDS` | training seeds (default `42,43,44,45,46`), one method directory each |
+| `LAYER` | which layer to read (default `-1`, the last) |
+| `AGGREGATION` | `mean` (default, the paper's) or `last` |
+| `TOP_K`, `ALPHA` | detection-set size and conformal miscoverage rate |
+| `EPOCHS`, `PATIENCE` | training budget |
+
+Config resolution is simpler than the others': one file per dataset,
+`baselines-rp/oat/configs/<DATASET>.yaml`, because there is no API variant —
+hidden states are not something a chat endpoint exposes. See
+[`baselines-rp/oat/configs/README.md`](../baselines-rp/oat/configs/README.md)
+to add an extractor.
+
+Four OAT-specific notes. The default GT setting is **`without`** (the vendored
+document never carries the task answer), so results land in `outputs-rb-nogt/`
+unless `GT=with`. Training uses the successful MCP-Atlas trajectories shipped
+in `vendored/OAT/dataset/`, read in place — every corpus in `data/` is failures
+only. Cached states and checkpoints live *inside* the `outputs-rb-*` roots, in
+`_oat-states/` and `_oat-ckpt/`, not in `artifacts/`; the leading underscore
+keeps them out of the report's way. And the front door needs
+`baselines-rp` on `PYTHONPATH`, which the script exports for you.
+
+## stepfinder/
+
+The second representation-based baseline: embed every step, train a temporal
+scorer on labelled failures, score the corpus (see
+[`baselines-rp/stepfinder/README.md`](../baselines-rp/stepfinder/README.md)).
+
+```
+DATASET=<ww|correct-error|traceelephant> [MODEL=<encoder>] [SUBSET=<subset>] bash scripts/stepfinder/run.sh
+```
+
+```bash
+DATASET=ww MODEL=qwen3-embedding-0.6b GPU=0 bash scripts/stepfinder/run.sh          # both subsets
+DATASET=ww SUBSET=hand-crafted MODEL=qwen3-embedding-0.6b GPU=0 bash scripts/stepfinder/run.sh
+DATASET=ww MODEL=qwen3-embedding-0.6b STAGES=feats-train,train bash scripts/stepfinder/run.sh
+DATASET=ww MODEL=qwen3-embedding-0.6b PROTOCOL=in-corpus GPU=1 bash scripts/stepfinder/run.sh
+DATASET=ww DRY_RUN=1 bash scripts/stepfinder/run.sh                                # preview
+```
+
+### Environment knobs
+
+| variable | effect |
+|---|---|
+| `DATASET` | required — picks `baselines-rp/stepfinder/configs/<DATASET>.yaml` |
+| `MODEL`, `SUBSET` | narrow the grid to one encoder / one subset |
+| `GT` | `with` appends the answer to the first step's content; default `without` |
+| `PROTOCOL` | `regen` (default, the paper's) or `in-corpus`, comma-separated |
+| `SEEDS` | training seeds → `stepfinder.s<seed>` |
+| `EVAL_SEEDS` | split seeds for `in-corpus` → `stepfinder.e<seed>` |
+| `MODEL_SELECTION` | `val` (default) or `vendored` (parity check; refuses to score) |
+| `AGENT_NORMALIZE` | `standardize` (default) or `raw` |
+| `STAGES` | subset of `feats-train,train,feats-test,score` |
+| `EPOCHS`, `BATCH_SIZE`, `PATIENCE`, `TOP_K` | training and decoding budget |
+| `GPU`, `START_IDX`, `END_IDX`, `OVERWRITE`, `DRY_RUN`, `CONFIG`, `EXTRA_SET` | as elsewhere |
+
+Config resolution matches OAT's: one file per dataset, no API variant, because
+embeddings are not something a chat endpoint exposes. See
+[`baselines-rp/stepfinder/configs/README.md`](../baselines-rp/stepfinder/configs/README.md)
+to add an encoder.
+
+Four StepFinder-specific notes. It is **supervised**, so it ships two training
+protocols — `regen` trains on the regenerated failures vendored with the paper's
+code, `in-corpus` on the 30% partition of each corpus the evaluation protocol
+reserves. The in-corpus family predicts only each seed's val and test ids, so
+`report --check-only` reads `PARTIAL` for it by design and its table is
+meaningful on the diagonal (`--diagonal`). Checkpoints always live in the
+without-GT tree, so one model serves both GT settings. And scoring runs one
+trajectory at a time on purpose: the vendored position prior divides by the
+batch's padded width, which would make a prediction depend on its batch.
 
 ## I/O — what each operation reads and writes
 
 Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
-`outputs-nogt` when `GT=without`; the inner layout is identical in both.
+`outputs-nogt` when `GT=without`; the inner layout is identical in both. The
+representation-based family uses its own pair, `<rb-root>` = `outputs-rb-gt` or
+`outputs-rb-nogt`, with the same inner layout again.
 
 | operation | reads | writes |
 |---|---|---|
@@ -240,8 +352,21 @@ Paths are repo-root relative. `<gt-root>` is `outputs` when `GT=with` and
 | `scripts/raffles/run.sh` | `baselines/raffles/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
 | `… → baselines.raffles.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/raffles/<id>.json` (+ `_run.json`), each with the full Judge/Evaluator transcript in `calls` and a per-iteration audit in `iterations` |
 | `scripts/errorprobe/run.sh` | `baselines/errorprobe/configs/<DATASET>[-api].yaml` | nothing itself — execs the sweep |
-| `… → baselines.errorprobe.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<errorprobe\|errorprobe_bt>/<id>.json` (+ `_run.json`), each with the full Analyzer/Verifier (and backward-walk) transcript in `calls` |
+| `… → baselines.errorprobe.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing outputs (resume ledger) | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<errorprobe\|errorprobe_bt\|errorprobe_paper>/<id>.json` (+ `_run.json`), each with the full transcript in `calls` (Analyzer/Verifier, the backward walk, or the paper mode's tagger/dependency/Strategist/Investigator/Arbiter rounds) |
 | `… → baselines.prompting.predict` | `data/<DATASET>/<SUBSET>/<id>.json`; existing `<gt-root>/…/<id>.json` (resume ledger); `$OPENAI_API_KEY` for API models; `../hub/<checkpoint>` for vLLM | `<gt-root>/<DATASET>/<SUBSET>/<MODEL>/<METHOD>/<id>.json` (one per trajectory, atomic) and `…/<METHOD>/_run.json` (run snapshot) |
+| `scripts/oat/run.sh` | `baselines-rp/oat/configs/<DATASET>.yaml` | nothing itself — execs the sweep |
+| `… → oat.predict` (`states-train`) | `vendored/OAT/dataset/MCP-atlas/Qwen3.5-27B/*.json`; `../hub/<checkpoint>` | `outputs-rb-nogt/mcp-atlas/train/<MODEL>/_oat-states/<id>.pt` (+ `_manifest.json`) |
+| `… → oat.predict` (`train`) | those cached states | `outputs-rb-nogt/mcp-atlas/train/<MODEL>/_oat-ckpt/{projector.pt, source_latents.pt, s<SEED>/model.pt}` |
+| `… → oat.predict` (`states-test`) | `data/<DATASET>/<SUBSET>/<id>.json`; `../hub/<checkpoint>` | `<rb-root>/<DATASET>/<SUBSET>/<MODEL>/_oat-states/<id>.pt` |
+| `… → oat.predict` (`score`) | the cached test states + the checkpoint; existing outputs (resume ledger) | `<rb-root>/<DATASET>/<SUBSET>/<MODEL>/oat.s<SEED>/<id>.json` (+ `_run.json`), each with the per-step anomaly scores and the top-k/conformal sets |
+| `oat.report --config baselines-rp/oat/configs/report_<ds>.yaml` | `data/<ds>/<subset>/*.json`; `<rb-root>/<ds>/<subset>/<model>/oat.s<seed>/[0-9]*.json` | `<rb-root>/<ds>/reports/oat/…` — step@1 and agent@1, same tables as every other baseline |
+| `scripts/stepfinder/run.sh` | `baselines-rp/stepfinder/configs/<DATASET>.yaml` | nothing itself — execs the sweep |
+| `… → stepfinder.predict` (`feats-train`) | `vendored/StepFinder/data/<TRAIN-SET>/train/*.json`; `../hub/<checkpoint>` | `outputs-rb-nogt/stepfinder-regen/<TRAIN-SET>/<MODEL>/_sf-feats/<id>.pt` (+ `_manifest.json`) |
+| `… → stepfinder.predict` (`train`) | those cached features | `outputs-rb-nogt/stepfinder-regen/<TRAIN-SET>/<MODEL>/_sf-ckpt/<PRESET>/<SELECTION>/s<SEED>/model.pt` (in-corpus: `<rb-nogt>/<DATASET>/<SUBSET>/<MODEL>/_sf-ckpt/…/e<SEED>/`) |
+| `… → stepfinder.predict` (`feats-test`) | `data/<DATASET>/<SUBSET>/<id>.json`; `../hub/<checkpoint>`; under `GT=with`, the without-GT cache | `<rb-root>/<DATASET>/<SUBSET>/<MODEL>/_sf-feats/<id>.pt` |
+| `… → stepfinder.predict` (`score`) | the cached test features + the checkpoint; existing outputs (resume ledger) | `<rb-root>/<DATASET>/<SUBSET>/<MODEL>/stepfinder.{s,e}<SEED>/<id>.json` (+ `_run.json`), each with the per-step distribution and the top-k set |
+| `stepfinder.report --config baselines-rp/stepfinder/configs/report_<ds>[_incorpus].yaml` | `data/<ds>/<subset>/*.json`; `<rb-root>/<ds>/<subset>/<model>/stepfinder.*/[0-9]*.json` | `<rb-root>/<ds>/reports/stepfinder[-incorpus]/…` — step@1 and agent@1, plus `diagonal.tsv` with `--diagonal` |
+| `rb_shared.rb_metrics --pred-root <rb-root>/<ds>` | the same prediction files | `<rb-root>/<ds>/reports/rb_metrics.tsv` — every method directory found: OAT's set metrics, StepFinder's Acc@K / MRR@3 / tolerance accuracy, and AUROC/AUPRC |
 | `baselines.prompting.report --config configs/report_<ds>.yaml [--gt without]` | `data/<ds>/<subset>/*.json` (split universe only); `<gt-root>/<ds>/<subset>/<model>/<method>/[0-9]*.json` | `<gt-root>/<ds>/reports/completion_status.tsv`, `…/reports/<model>/<subset>/comparison_by_seed.tsv`, `…/reports/summary_mean_over_seeds.tsv` |
 
 ## TODO — the full sweep, both GT settings
@@ -309,6 +434,96 @@ first**; extend to others afterwards.
 
   ```bash
   git add outputs/ outputs-nogt/ && git commit -m "GPT-4o/GPT-5 prompting results, both GT settings"
+  ```
+
+## TODO — ErrorProbe on GPT-4o and GPT-5, both GT settings
+
+The local models (`qwen3.5-9b`, `deepseek-8b`) are complete for every mode
+the configs enable. The API models have no ErrorProbe results yet. Their
+specs already sit in `baselines/errorprobe/configs/<ds>-api.yaml` and the
+report configs already list them, so nothing below edits a config.
+
+Status (2026-09-07): the key authenticates, but every request returns
+`429 insufficient_quota` ("You have no credits remaining"). The pipeline is
+proven up to the API: the front door picks the `-api` config, both models
+receive their exact params, and a failed trajectory is skipped without
+writing, so the same command resumes it. Step 1 is the blocker.
+
+- [ ] **1. Credits.** Top up the organization at
+  platform.openai.com/settings/organization/billing, then confirm with one
+  cheap call before launching anything:
+
+  ```bash
+  export PATH=/root/dataDisk/home/thanhdo/attrib-prompting/.venv/bin:$PATH   # the repo's interpreter
+  export OPENAI_API_KEY=sk-...
+  DATASET=ww SUBSET=algorithm-generated MODEL=gpt-4o MODE=truncated END_IDX=1 bash scripts/errorprobe/run.sh
+  ```
+
+  Expect `1/1 files` and a doc at
+  `outputs-nogt/ww/algorithm-generated/gpt-4o/errorprobe/1.json` whose
+  `calls` has an `analyzer` and a `verifier` entry. A `429` in the log means
+  the balance is still empty; the run wrote nothing, rerun after fixing it.
+
+- [ ] **2. Smoke test, all three modes, both models** (2 short traces each;
+  algorithm-generated traces run 5–15 turns, so even `backward` is cheap):
+
+  ```bash
+  for M in gpt-4o gpt-5; do
+    DATASET=ww SUBSET=algorithm-generated MODEL=$M END_IDX=2 bash scripts/errorprobe/run.sh             # truncated + backward
+    DATASET=ww SUBSET=algorithm-generated MODEL=$M END_IDX=2 MODE=paper bash scripts/errorprobe/run.sh
+    DATASET=ww SUBSET=algorithm-generated MODEL=$M END_IDX=2 GT=with bash scripts/errorprobe/run.sh
+  done
+  ```
+
+  Check one doc per mode: `predicted_step` is an integer (not null),
+  `gt_in_prompt` matches the tree, and for gpt-5 `raw` is not empty — an
+  empty `raw` means the 16,384-token cap was spent on reasoning; raise
+  `max_completion_tokens` in the spec before the full run if it recurs.
+
+- [ ] **3. GPT-4o, everything.** Runs resume, so rerun after any crash:
+
+  ```bash
+  for gt in without with; do
+    for ds in ww traceelephant; do
+      DATASET=$ds MODEL=gpt-4o GT=$gt bash scripts/errorprobe/run.sh             # truncated + backward
+      DATASET=$ds MODEL=gpt-4o GT=$gt MODE=paper bash scripts/errorprobe/run.sh
+    done
+  done
+  DATASET=correct-error MODEL=gpt-4o bash scripts/errorprobe/run.sh              # truncated only, no GT
+  DATASET=correct-error MODEL=gpt-4o MODE=paper bash scripts/errorprobe/run.sh
+  ```
+
+  Cost, per trajectory: `truncated` is 2 calls; `paper` is about 7 on a
+  ten-step trace and 13 on a median hand-crafted one; `backward` is 100–300
+  on hand-crafted and magentic. Run `ww` first, then `traceelephant`. The
+  `correct-error` config enables `truncated` only (2,226 trajectories);
+  its `backward` is a deliberate opt-in (`MODE=backward`) that nobody has
+  budgeted.
+
+- [ ] **4. GPT-5, everything.** The same loop with `MODEL=gpt-5`, minus
+  `correct-error` (excluded for gpt-5 on every baseline; see
+  `report_correct-error.yaml`). Its spec sends `reasoning_effort: low`; the
+  `_run.json` records it.
+
+- [ ] **5. Check completion and evaluate**, once per dataset per setting:
+
+  ```bash
+  for gt in "" "--gt with"; do
+    for ds in ww traceelephant correct-error; do
+      python -m baselines.errorprobe.report --config baselines/errorprobe/configs/report_${ds}.yaml $gt --check-only
+      python -m baselines.errorprobe.report --config baselines/errorprobe/configs/report_${ds}.yaml $gt
+    done
+  done
+  ```
+
+  Every gpt row that was run must read `DONE`; `errorprobe_paper` rows with
+  a few `fmt_fail` are normal (the Arbiter occasionally returns no JSON).
+  Tables land in `outputs*/<ds>/reports/errorprobe/`.
+
+- [ ] **6. Commit the results:**
+
+  ```bash
+  git add outputs/ outputs-nogt/ && git commit -m "ErrorProbe: GPT-4o/GPT-5 results, both GT settings"
   ```
 
 ## Other scripts

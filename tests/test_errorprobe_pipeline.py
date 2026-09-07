@@ -593,6 +593,30 @@ def test_sweep_dry_run(name):
         assert f"--mode {mode}" not in flat
 
 
+def test_sweep_dry_run_api_params():
+    """The API specs reach predict as verbatim --api-param pairs, no vLLM knobs.
+
+    gpt-4o mirrors the vendored config.yaml model block; gpt-5 is a reasoning
+    model, so it gets max_completion_tokens and no temperature.
+    """
+    res = run_module("baselines.errorprobe.sweep",
+                     "--config", "baselines/errorprobe/configs/ww-api.yaml",
+                     "--set", "subsets=[hand-crafted]", "--set", "modes=[truncated]", "--dry-run")
+    flat = res.stdout.replace("\\\n    ", " ")
+    cmds = [" ".join(line.split()) for line in flat.splitlines()
+            if "baselines.errorprobe.predict" in line]
+    assert len(cmds) == 2
+    gpt4o = next(c for c in cmds if "--model-name gpt-4o" in c)
+    gpt5 = next(c for c in cmds if "--model-name gpt-5" in c)
+    assert "--backend openai --model gpt-4o" in gpt4o
+    assert "--api-param max_tokens=4000" in gpt4o and "--api-param temperature=0.7" in gpt4o
+    assert "--backend openai --model gpt-5" in gpt5
+    assert "--api-param max_completion_tokens=16384" in gpt5
+    assert "reasoning_effort=" in gpt5 and "temperature" not in gpt5
+    for c in cmds:   # vLLM-only knobs never reach an API model
+        assert "--temperature" not in c and "--gen_max_tokens" not in c and "--dtype" not in c
+
+
 def test_sweep_dry_run_with_gt():
     res = run_module("baselines.errorprobe.sweep", "--gt", "with",
                      "--config", "baselines/errorprobe/configs/ww-api.yaml", "--dry-run")

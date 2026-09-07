@@ -36,9 +36,28 @@ data = ["pyarrow", "datasets"]
 # pytest. sklearn is also the vendored cosine-similarity dependency for
 # baselines/correct/similarity.py real runs.
 dev = ["pytest", "scikit-learn"]
+# The representation-based baselines (baselines-rp/): OAT reads hidden states
+# out of a local checkpoint with transformers, projects them with scikit-learn's
+# PCA, and fits a neural controlled differential equation with torchcde on top
+# of torchdiffeq. torch is unpinned for the same reason vllm is — match your
+# CUDA stack.
+rb = [
+    "torch",
+    "transformers",
+    "scikit-learn",
+    "joblib",
+    "torchcde>=0.2.5",
+    "torchdiffeq>=0.2.5",
+]
 
 [tool.setuptools.packages.find]
-include = ["baselines*"]
+# Two source roots. The repo root carries the prompting-based `baselines/`
+# package; `baselines-rp/` carries the representation-based family. Its hyphen
+# is deliberate: the directory cannot be imported as a package, so the two
+# trees can never collide, while the packages inside it (`oat`, `rb_shared`)
+# import by plain name.
+where = [".", "baselines-rp"]
+include = ["baselines*", "oat*", "rb_shared*", "stepfinder*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

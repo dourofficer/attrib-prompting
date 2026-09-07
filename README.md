@@ -1,15 +1,28 @@
 # attrib-prompting
 
-Standalone reproduction of **prompting-based failure-attribution baselines** for
-LLM multi-agent systems: given a *failed* trajectory, predict which agent, at
-which step, made the decisive mistake.
+Standalone reproduction of **failure-attribution baselines** for LLM
+multi-agent systems: given a *failed* trajectory, predict which agent, at which
+step, made the decisive mistake.
 
-The three methods come from the Who&When paper (vendored under
-[`vendored/Agents_Failure_Attribution/`](vendored/Agents_Failure_Attribution)):
-**all_at_once** (one-shot agent+step), **step_by_step** (per-step Yes/No, earliest
-"Yes" wins), **binary_search** (recursive halving). Prompts, regexes and decision
-rules are byte-identical to the vendored code, enforced by execution-level
-parity tests.
+The baselines come in two families, scored the same way so they can be
+compared:
+
+- **Prompting-based** — ask a frontier model to read the log and name the step.
+  These live in `baselines/` and write to `outputs/` and `outputs-nogt/`.
+  The three original methods come from the Who&When paper (vendored under
+  [`vendored/Agents_Failure_Attribution/`](vendored/Agents_Failure_Attribution)):
+  **all_at_once** (one-shot agent+step), **step_by_step** (per-step Yes/No,
+  earliest "Yes" wins), **binary_search** (recursive halving); then **CORRECT**,
+  **CHIEF**, **RAFFLES** and **ErrorProbe**.
+- **Representation-based** — read a model's vectors instead of prompting it,
+  and train a small model on top. These live in `baselines-rp/` and write to
+  `outputs-rb-gt/` and `outputs-rb-nogt/`: **OAT**, which learns the shape of
+  success from unlabelled successful runs, and **StepFinder**, which learns
+  from labelled failures.
+
+Prompts, regexes and decision rules are byte-identical to the vendored code,
+enforced by execution-level parity tests; so are the representation-based
+methods' serialization, pooling and model arithmetic.
 
 ## Datasets
 
@@ -39,6 +52,7 @@ pip install -e .            # CPU core: evaluation, tests, dry-runs
 pip install -e ".[api]"     # + OpenAI-compatible API inference
 pip install -e ".[vllm]"    # + local-checkpoint inference (CUDA-matched vLLM)
 pip install -e ".[rag]"     # + CHIEF's offline retrieval stage only (faiss, MiniLM)
+pip install -e ".[rb]"      # + the representation-based family (torch, transformers, torchcde)
 ```
 
 Run everything from the repo root. Local checkpoints are expected under `../hub/`.
@@ -83,16 +97,52 @@ DATASET=ww MODEL=gpt-4o MAX_ITERS=5 bash scripts/raffles/run.sh   # the paper's 
 ```
 
 The ErrorProbe baseline (Analyzer→Verifier diagnosis from the authors'
-simplified reproduction, vendored under `vendored/ERRORPROBE/`; two modes —
+simplified reproduction, vendored under `vendored/ERRORPROBE/`; three modes —
 `truncated` reads the last 15 turns, `backward` walks the full trace from the
-symptom; see [`baselines/errorprobe/README.md`](baselines/errorprobe/README.md)).
+symptom, and `paper` rebuilds the paper's own pipeline, which the vendored
+code omits: a MAST tagger, a dependency graph walked backward from the
+failure, and a Strategist/Investigator/Arbiter team; see
+[`baselines/errorprobe/README.md`](baselines/errorprobe/README.md)).
 Its vendored prompts carry no task answer, so default results land in
 `outputs-nogt/`:
 
 ```bash
 DATASET=ww MODEL=gpt-4o bash scripts/errorprobe/run.sh
 DATASET=ww MODEL=gpt-4o MODE=truncated bash scripts/errorprobe/run.sh   # cheap mode only
+DATASET=ww MODEL=gpt-4o MODE=paper bash scripts/errorprobe/run.sh       # the paper pipeline (opt-in)
 ```
+
+The OAT baseline (hidden states → PCA → a neural controlled differential
+equation trained on *successful* trajectories, scoring each step of a failure by
+how far it strays; see [`baselines-rp/oat/README.md`](baselines-rp/oat/README.md)).
+It prompts nothing and costs no tokens, but it must be trained first — one
+command runs all four stages, and the later ones resume:
+
+```bash
+DATASET=ww MODEL=qwen3.5-9b GPU=0 bash scripts/oat/run.sh
+DATASET=ww MODEL=qwen3.5-9b STAGES=states-train,train bash scripts/oat/run.sh   # train only
+```
+
+Training uses the successful MCP-Atlas trajectories vendored with the paper's
+code — every corpus in `data/` is failures only. Its default GT setting is
+without, so results land in `outputs-rb-nogt/`.
+
+The StepFinder baseline (the second representation-based one: step embeddings →
+BiLSTM → agent-aware attention → one score per step, trained on *labelled
+failures*; see [`baselines-rp/stepfinder/README.md`](baselines-rp/stepfinder/README.md)).
+It also costs no tokens, and it uses a language model only to embed — never to
+generate:
+
+```bash
+DATASET=ww MODEL=qwen3-embedding-0.6b GPU=0 bash scripts/stepfinder/run.sh
+DATASET=ww MODEL=qwen3-embedding-0.6b PROTOCOL=in-corpus GPU=0 bash scripts/stepfinder/run.sh
+```
+
+Being supervised, it ships two training protocols. The default reproduces the
+paper: it trains on the regenerated failure trajectories vendored with the code,
+which share no task with `data/ww`. The second (`PROTOCOL=in-corpus`) trains on
+the 30% partition of each corpus that the evaluation protocol reserves and no
+other baseline uses, so it covers only the val and test ids of each seed.
 
 Or the full grid per dataset:
 
@@ -138,7 +188,8 @@ python -m baselines.prompting.report --config .../report_ww.yaml --gt without
 
 Because the two settings differ only by that line and share the corpus (hence
 the same per-seed splits), `outputs/` vs `outputs-nogt/` is an exact paired
-comparison. Note that `outputs/correct-error/` predates the corpus's restored
+comparison. The representation-based family uses the same axis under its own
+pair of roots, `outputs-rb-gt/` and `outputs-rb-nogt/`. Note that `outputs/correct-error/` predates the corpus's restored
 answers — see the warning in [`scripts/README.md`](scripts/README.md).
 
 ## Evaluation
@@ -158,6 +209,29 @@ predictions count as wrong. Tables land in `outputs/<ds>/reports/`
 with split-independent `*_full` columns over the whole corpus); `--gt without`
 reads and writes the `outputs-nogt/` mirror instead.
 
+The representation-based baselines are scored by the same report, over the same
+seeded splits, so a hidden-state method and a prompting one land in comparable
+tables:
+
+```bash
+python -m oat.report        --config baselines-rp/oat/configs/report_ww.yaml
+python -m stepfinder.report --config baselines-rp/stepfinder/configs/report_ww.yaml
+python -m rb_shared.rb_metrics --pred-root outputs-rb-nogt/ww
+```
+
+The last command adds the views the two papers report — precision, recall, F1
+and hit rate over OAT's top-k and conformal step *sets*, and StepFinder's
+Acc@K, MRR@3 and tolerance accuracy — plus AUROC and AUPRC, all recomputed from
+the scores already stored in each prediction file. Columns a method has no
+machinery for stay empty rather than borrowing another's.
+
+StepFinder's in-corpus family predicts only each seed's val and test ids, so its
+shared-report table is meaningful on its diagonal; `--diagonal` writes that out:
+
+```bash
+python -m stepfinder.report --config baselines-rp/stepfinder/configs/report_ww_incorpus.yaml --diagonal
+```
+
 Utilities: `python -m baselines.prompting.reparse` re-derives all_at_once
 predictions from stored `raw` (no GPU); `misc/import_legacy_jsonl.py`
 imports legacy `predictions_method-*.jsonl` trees.
@@ -172,9 +246,16 @@ baselines/prompting/           the three methods (verbatim prompts), predict/swe
 baselines/correct/             CORRECT baseline: schemagen → similarity → detection
 baselines/chief/               CHIEF baseline: ragprep → six-call causal-graph detection
 baselines/raffles/             RAFFLES baseline: iterative Judge-Evaluator loop
-baselines/errorprobe/          ErrorProbe baseline: Analyzer→Verifier, truncated or backward
+baselines/errorprobe/          ErrorProbe baseline: Analyzer→Verifier (truncated, backward) and the paper pipeline (paper/)
+baselines-rp/                  representation-based family (own source root, own
+                               output roots): rb_shared/ (state cache, encoder
+                               loading, the papers' metrics), oat/, stepfinder/
 data/                          corpora   ·  vendored/  upstream code, verbatim
 outputs/, outputs-nogt/        committed results, with-GT and without-GT
+outputs-rb-gt/,                the same for the representation-based family,
+outputs-rb-nogt/               including its cached vectors (_oat-states/,
+                               _sf-feats/) and trained models (_oat-ckpt/,
+                               _sf-ckpt/)
 artifacts/                     committed inputs a run consumes, not results:
                                CORRECT's schemata and similarities, CHIEF's exemplars
 scripts/                       front doors (one subdir per baseline family)

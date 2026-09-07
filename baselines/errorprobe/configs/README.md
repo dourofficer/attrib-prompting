@@ -25,8 +25,9 @@ outputs_root: outputs/ww        # predictions (with-GT; the default without-GT
                                 # setting mirrors to outputs-nogt/ww)
 gt: without                     # this baseline's default = the vendored setting
 
-modes: [truncated, backward]    # which vendored configuration(s) to run
+modes: [truncated, backward]    # which configuration(s) to run; `paper` is opt-in
 method_dir: null                # output dir override (only with a single mode)
+paper: {...}                    # knobs for the paper mode, read only when it runs
 model_specs:  {...}             # backend + params per model name
 ```
 
@@ -34,8 +35,63 @@ model_specs:  {...}             # backend + params per model name
 (Analyzer over the last 15 turns — 2 calls per trajectory, writes under
 `errorprobe/`), `backward` is the config-gated backward-tracing walk (full
 trace, roughly 2–3 calls per examined turn plus memory maintenance, writes
-under `errorprobe_bt/`). The two modes never collide — each has its own method
-directory.
+under `errorprobe_bt/`). A third value, `paper`, runs the paper's own pipeline
+(MAST tagger → dependency graph → Strategist/Investigator/Arbiter, about 2
+calls per 10 steps plus 5, writes under `errorprobe_paper/`). The shipped
+configs leave it out of `modes:` on purpose, so the front door does not run it
+by default; `MODE=paper bash scripts/errorprobe/run.sh` or
+`--set modes=[paper]` selects it. The three modes never collide — each has its
+own method directory.
+
+The `paper:` block holds the paper mode's knobs and is ignored by the other
+two modes:
+
+```yaml
+paper:
+  max_hypotheses: 3          # Investigator calls per trajectory
+  chunk_chars: 12000         # tagger / dependency chunk size (rendered chars)
+  condensed_chars: 20000     # budget for the condensed trace the team reads
+  include_mast_examples: false   # the MAST authors' worked examples, ~17k tokens per tagger prompt
+  sequential_edges: fallback     # 'always' adds turn-to-turn edges everywhere (no masking; ablation)
+```
+
+Leave `include_mast_examples` off for local models: the tagger prompt already
+carries the 14 MAST definitions and a 12k-character chunk (about 8k tokens),
+and the examples push it past `max_model_len: 32768`.
+
+A model spec may carry its own `paper:` block. Its keys override the top-level
+block for that model only, and it may also name vLLM knobs (`gen_max_tokens`,
+`max_model_len`, `gpu_memory_utilization`, ...) that then apply to the paper
+mode alone; the vendored modes keep the spec's usual values.
+
+The shipped local configs decode `qwen3.5-9b` on a tight budget in every
+mode, and give its paper mode one hypothesis on a 10k-character condensed
+trace:
+
+```yaml
+model_specs:
+  qwen3.5-9b:
+    model_path: ../hub/Qwen/Qwen3.5-9B
+    gen_max_tokens: 512            # a quarter of the answer budget
+    temperature: 1.0               # with a 0.95 nucleus
+    top_p: 0.95
+    max_model_len: 16384           # half the window; no ErrorProbe prompt exceeds it
+    truncate_prompt_tokens: 15872  # clip from the front (inert here, see below)
+    gpu_memory_utilization: 0.6
+    paper:
+      max_hypotheses: 1            # one Investigator call instead of three
+      condensed_chars: 10000       # a smaller Strategist prompt; masking trims harder
+```
+
+This is a deliberate handicap (user decision, 2026-09-06). It measures the
+method's gain over the vendored modes under a weak open backbone, and it keeps
+the paper mode's cost near the truncated mode's. The same checkpoint runs on
+the other baselines' settings elsewhere in the repo (2048 tokens, temperature
+0.7, a 32k window), so ErrorProbe's `qwen3.5-9b` rows are not comparable to
+those baselines' `qwen3.5-9b` rows at the decoding level; `IMPLEMENTATION.md`
+records the difference. The clip is inert because no ErrorProbe prompt
+reaches 15,872 tokens; it would only bite a method that sends whole traces.
+`deepseek-8b` runs the full budget.
 
 `params` in a spec go to the API verbatim. The shipped
 `{max_tokens: 4000, temperature: 0.7}` mirrors the vendored `config.yaml`
@@ -119,8 +175,9 @@ falls back to the top-level value.
 ## Report configs
 
 `report_<ds>.yaml` lists the models and methods that go into the tables; add a
-model name there once its runs finish. `methods: [errorprobe, errorprobe_bt]`
-scores both modes side by side; drop one if you only ran the other. `gt:
+model name there once its runs finish. `methods: [errorprobe, errorprobe_bt,
+errorprobe_paper]` scores the three modes side by side; a method dir that does
+not exist yet shows as MISSING and costs nothing. `gt:
 without` selects the `outputs-nogt/` tree (the default for this baseline);
 `gt_in_prompt` labels the with-GT tree only. Seeds are 1–20 for
 ww/traceelephant, 1–3 for correct-error.

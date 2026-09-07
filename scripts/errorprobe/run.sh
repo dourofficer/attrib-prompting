@@ -6,12 +6,13 @@
 #   DATASET=ww MODEL=gpt-4o bash scripts/errorprobe/run.sh                 # both modes
 #   DATASET=ww SUBSET=hand-crafted MODEL=gpt-4o bash scripts/errorprobe/run.sh
 #   DATASET=ww MODEL=gpt-4o MODE=truncated bash scripts/errorprobe/run.sh  # cheap mode only
+#   DATASET=ww MODEL=gpt-4o MODE=paper bash scripts/errorprobe/run.sh      # the paper pipeline (opt-in)
 #   DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/errorprobe/run.sh  # preview
 set -euo pipefail
 
 usage() {
   echo "Usage: DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/errorprobe/run.sh" >&2
-  echo "Optional env: MODE=truncated|backward (default: config — usually both)," >&2
+  echo "Optional env: MODE=truncated|backward|paper (default: config — the two vendored modes)," >&2
   echo "  GT=with|without (default: config — without, the vendored setting)," >&2
   echo "  GPU, START_IDX, END_IDX, DRY_RUN=1, OVERWRITE=1," >&2
   echo "  CONFIG=<path>, EXTRA_SET=\"--set k=v ...\"" >&2

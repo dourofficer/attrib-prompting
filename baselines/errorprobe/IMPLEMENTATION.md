@@ -98,8 +98,69 @@ side-by-side table). Consequences worth restating here with line references:
 5. The two modes write to distinct method directories (`errorprobe`,
    `errorprobe_bt`) under the same output root, so they never collide and the
    shared report scores them as two methods.
+6. `qwen3.5-9b` decodes on a handicap under this baseline only (user
+   decision, 2026-09-06): 512 generation tokens, temperature 1.0 with top_p
+   0.95, a 16k window with prompts clipped at 15,872 tokens, in all three
+   modes, plus one hypothesis and a 10k condensed trace in the paper mode.
+   The other baselines run the same checkpoint at 2048 tokens, temperature
+   0.7 and a 32k window. Every ErrorProbe `qwen3.5-9b` result file records
+   the handicap in its `_run.json`; compare across baselines with that in
+   mind. `deepseek-8b` runs on the repo-wide settings.
+
+## Paper mode (no vendored counterpart)
+
+`paper/` rebuilds the pipeline the paper describes (Section 4, Algorithm 1)
+because the vendored code contains none of it. There is nothing to be
+byte-faithful to, so the rules differ from the rest of this file: every prompt
+is ours, its provenance is named here, and
+`tests/fixtures/errorprobe_paper_golden_prompts.json` pins the bytes so a
+change is a visible diff.
+
+### Where each prompt comes from
+
+| prompt | built from |
+|---|---|
+| tagger (`paper/tagger.py`) | the MAST authors' LLM annotator (`llm_judge_pipeline.ipynb` in github.com/multi-agent-systems-failure-taxonomy/MAST): the same definitions file, vendored verbatim under `vendored/MAST/`, the same "only mark a failure mode if you can provide an example of it in the trace" rule, moved from one verdict per trace to one tag per (step, mode) with the step quoted as evidence, which is what the paper's Section 4.1 describes |
+| dependency (`paper/graph.py`) | Section 4.2, "edges represent information flow (e.g., Agent B cites Agent A's output)"; the five edge kinds name the ways a turn can use an earlier one in these corpora |
+| Strategist, Investigator, Arbiter (`paper/team.py`) | Section 4.3, role by role; the Investigator's rule "cannot simply state 'the code is wrong'; it must generate a diff or an execution log proving the discrepancy" is quoted in spirit and enforced after parsing too |
+| the Arbiter's `signature` | the vendored `core/epm_schema.ErrorSignature` (`tool, api, arg_schema, context_slots, err_family`), so a later memory stage can write straight into the vendored schema |
+
+### The choices the paper leaves open
+
+| the paper says | this implementation does |
+|---|---|
+| tools: CodeExec re-runs code in a sandbox, LogicProbe checks pre/post-conditions | both are prompts (user decision, 2026-09-05). `code_exec` asks for an interpreter-style execution log, expected vs observed output and a diff; `logic_probe` for pre- and post-conditions each with the step that establishes or contradicts it. Evidence with no log, no conditions and no discrepancy is forced inconclusive (`bare_assertion`) |
+| MAST priors enter the backward trace | tags steer only the budget trimming (tagged steps are pinned) and the Strategist prompt. The dependency prompt never sees them, so both round-1 prompt families go out in one round |
+| a dependency graph over the whole trace | LLM edges per chunk of about 12k rendered characters (`chunk_chars`), each step clipped to 1200 characters head-and-tail, plus structural edges: code or a tool call to the next execution output, an instruction to the next turn of its addressee, and the last two turns |
+| BFS on incoming edges from the symptom | plain adjacency is not an edge, or the search would reach every turn and mask nothing. If the search leaves fewer than 6 steps, adjacent turns are added from the symptom backward until it does (`erf.floor_applied`); `sequential_edges: always` restores full adjacency for an ablation. The task step is always kept |
+| "mask unconnected branches" | masked runs render as one line each: `[steps 7-11 masked: 5 turns (WebSurfer x3, Orchestrator x2), no dependency path to the failure]`. Over the 20k-character budget (`condensed_chars`) the per-step clip drops to 600, then steps go by priority: symptom, task and tagged steps stay; the rest leave furthest-from-the-symptom first, ties nearest the start first |
+| the trace is "parsed into a structured representation S_x = {(agent_t, role_t, action_t)}" | `paper/structure.py`: agent from the role string; role text from alg-gen's `system_prompt` dict or the hand-crafted team block in the first Orchestrator thought; action from first-match regex rules over the shapes this repo's corpora contain (tool call, code fence, exit code or traceback, WebSurfer observation, ledger JSON, addressed instruction, speaker selection, final answer, termination) |
+| agent identity | the repo rule, role split before any parenthesis, with one difference from the vendored extraction the other two modes inherit: only lower-case `human`, `user`, `system`, `assistant` are generic. A capitalised `Assistant` is a real Magentic-One agent and a gold answer in four hand-crafted traces |
+| the Strategist "formulates a set of hypotheses" | up to `max_hypotheses` (3), most likely first; an agent not in the run is replaced by the speaker at that step (`agent_fixed`); an unknown probe name becomes the default for the step's action class; duplicates on (step, mode) are dropped |
+| the Arbiter "filters out hypotheses where E_h is empty or inconclusive" | the program filters first (`conclusive and supports_hypothesis`); survivors are shown with evidence, the rest as one line each. With no survivor every hypothesis is shown under a heading saying so and the prompt asks for a low-confidence best guess (`arbiter_saw_only_inconclusive`) |
+| (unspecified) JSON reading | every answer is read strictly first, then leniently: literal newlines inside strings are allowed and a backslash JSON forbids is doubled. Math-heavy traces make models write LaTeX (`\sqrt`, `\omega`) inside JSON strings; on the first full run the strict reader threw away 608 of 47,298 answers for that reason, including 44 whole diagnoses on math500 |
+| (unspecified) parse failures | an unreadable tagger or dependency answer contributes nothing (`parsed: false`); no hypotheses ends the trajectory with a null prediction (`failure_stage: "strategist"`, `raw` = the Strategist's answer); an unreadable Arbiter answer lets the best-evidenced hypothesis stand (`failure_stage: "arbiter"`), mirroring the vendored backward mode's synthesis fallback |
+| Table 3: k = 5, τ = 0.7, α = 0.6, d = 1536, T = 0.7 | k, α and d belong to the absent memory stage. τ is applied to nothing but is recorded in `memory_candidate.eligible` (verified ∧ c ≥ 0.7 ∧ novel). T = 0.7 is already this baseline's sampling default |
+| the failure symptom is an input | every prompt states "The run ended with an incorrect final answer"; `--gt with` appends the repo's answer line to the task text in all five prompt kinds |
+| MAST numbers 3.2 and 3.3 | `definitions.txt` calls 3.2 "Weak Verification" and 3.3 "No or Incorrect Verification"; the annotator notebook numbers them the other way. Modes are joined by name: Weak → `incomplete_verification`, No or Incorrect → `incorrect_verification`. The tagger accepts an id, a number or a name and normalises all three |
+
+The MAST worked examples (`examples.txt`, 67 KB) are vendored but off by
+default (`include_mast_examples`): they add about 17k tokens to every tagger
+prompt and do not fit the local models' 32k window.
 
 ## Tests
+
+`tests/test_errorprobe_paper_pipeline.py` (CPU-only, keyless): golden-prompt
+parity for all nine prompt kinds plus phrase pins on the sentences that carry
+each contract; the action classifier on one string per real corpus pattern;
+addressee, role and task-step extraction; structural edges, edge parsing,
+BFS with a masked side branch, the floor, and budget trimming by priority;
+every parser's failure path; the program's four rounds, the no-hypothesis,
+all-inconclusive and Arbiter-fallback paths, tiny and 60-step traces, the GT
+flag reaching every prompt, and the memory hook staying off; CLI e2e with
+resume, knobs and `--method-dir`; sweep dry-runs for all six shipped configs
+(and the check that none runs the paper mode by default); and the shared
+report scoring all three method dirs.
 
 `tests/test_errorprobe_pipeline.py` (CPU-only, keyless): Analyzer/Verifier
 prompt and parser parity against the vendored classes (litellm stubbed) over
