@@ -1,0 +1,368 @@
+{
+  "id": "20",
+  "filename": "20.json",
+  "question_id": "f3917a3d-1d17-4ee2-90c5-683b072218fe",
+  "method": "errorprobe_paper",
+  "mode": "paper",
+  "model": "gpt-5",
+  "backend": "openai",
+  "gt_in_prompt": true,
+  "predicted_agent": "Verification_Expert",
+  "predicted_step": 5,
+  "gold_agent": "WebServing_Expert",
+  "gold_step": "0",
+  "raw": "{\n  \"agent\": \"Verification_Expert\",\n  \"step\": 5,\n  \"mode\": \"incorrect_verification\",\n  \"confidence\": 0.83,\n  \"reason\": \"They directed use of an OAuth Bearer token for a public MediaWiki read query and provided code that sent Authorization: Bearer <token>, which the API rejected (mwoauth-invalid-authorization). This prevented receiving the 'query' payload and halted counting; even pagination was not handled. Correcting this earliest mistake (no auth header and proper parameters/continuation) would have allowed obtaining the correct edit count.\",\n  \"chosen_hypothesis\": 0,\n  \"novel_and_robust\": true,\n  \"signature\": {\n    \"mast_mode\": \"incorrect_verification\",\n    \"tool\": \"MediaWiki Action API\",\n    \"args\": [\"HTTP headers\", \"query params\", \"pagination\"],\n    \"context\": [\"verification agent\", \"web data retrieval\"]\n  },\n  \"guard\": \"For MediaWiki read-only queries, do not send an OAuth Bearer token; use no auth and handle rvcontinue pagination correctly.\"\n}",
+  "calls": [
+    {
+      "role": "tagger",
+      "chunk": 0,
+      "steps": [
+        0,
+        9
+      ],
+      "parsed": true,
+      "response": "{\n  \"tags\": [\n    {\"step\": 0, \"mode\": \"task_derailment\", \"evidence\": \"Collect information from the general task, follow the suggestions from manager to solve the task.\", \"severity\": 0.6},\n    {\"step\": 3, \"mode\": \"incorrect_verification\", \"evidence\": \"Once you have obtained your API token, you can use it to authenticate your requests to the Wikimedia API.\", \"severity\": 0.7},\n    {\"step\": 5, \"mode\": \"fail_task_spec\", \"evidence\": \"Replace 'YOUR_ACCESS_TOKEN' with your actual API token and run the code again. This should give you the number of edits...\", \"severity\": 0.7},\n    {\"step\": 5, \"mode\": \"incorrect_verification\", \"evidence\": \"headers = {'Authorization': f'Bearer {token}'}\", \"severity\": 0.95},\n    {\"step\": 6, \"mode\": \"incorrect_verification\", \"evidence\": \"ValueError: API response does not contain 'query' key... Invalid access token\", \"severity\": 0.9},\n    {\"step\": 7, \"mode\": \"task_derailment\", \"evidence\": \"A Bing search for 'number of edits to Wikipedia page on Antidisestablishmentarianism from inception to June 2023' found 10 results:\", \"severity\": 0.8},\n    {\"step\": 8, \"mode\": \"task_derailment\", \"evidence\": \"Title: Antidisestablishmentarianism - Wikipedia\", \"severity\": 0.7},\n    {\"step\": 9, \"mode\": \"task_derailment\", \"evidence\": \"Antidisestablishmentarianism is a political movement in the UK...\", \"severity\": 0.95},\n    {\"step\": 9, \"mode\": \"fail_task_spec\", \"evidence\": \"Antidisestablishmentarianism is a political movement in the UK...\", \"severity\": 0.9}\n  ],\n  \"summary\": \"The run derailed from computing the edit count into irrelevant browsing and content summarization, compounded by incorrect API authentication usage and weak verification of the Wikimedia API requirements.\"\n}"
+    },
+    {
+      "role": "dependency",
+      "chunk": 0,
+      "steps": [
+        0,
+        9
+      ],
+      "parsed": true,
+      "response": "{\n  \"edges\": [\n    {\"from\": 0, \"to\": 1, \"kind\": \"instructs\", \"why\": \"Step 1 searches for how to obtain a Wikimedia API token per Step 0 plan.\"},\n    {\"from\": 1, \"to\": 2, \"kind\": \"cites\", \"why\": \"Step 2 opens a result from the search in Step 1.\"},\n    {\"from\": 2, \"to\": 3, \"kind\": \"cites\", \"why\": \"Step 3 summarizes instructions from the Managing API keys page opened in Step 2.\"},\n    {\"from\": 3, \"to\": 4, \"kind\": \"responds_to\", \"why\": \"Step 4 notes there was no executable code in Step 3 to run.\"},\n    {\"from\": 0, \"to\": 5, \"kind\": \"instructs\", \"why\": \"Step 5 continues executing the plan to fetch edit history with code.\"},\n    {\"from\": 5, \"to\": 6, \"kind\": \"executes\", \"why\": \"Step 6 shows the result of running the code provided in Step 5.\"},\n    {\"from\": 6, \"to\": 5, \"kind\": \"verifies\", \"why\": \"Step 6 error output verifies the token issue anticipated in Step 5’s debug messaging.\"},\n    {\"from\": 0, \"to\": 7, \"kind\": \"instructs\", \"why\": \"Step 7 pivots to search for the edit count to solve the general task from Step 0.\"},\n    {\"from\": 7, \"to\": 8, \"kind\": \"cites\", \"why\": \"Step 8 opens the Antidisestablishmentarianism Wikipedia page found via Step 7 search.\"},\n    {\"from\": 8, \"to\": 9, \"kind\": \"cites\", \"why\": \"Step 9 summarizes content from the Wikipedia article opened in Step 8.\"}\n  ]\n}"
+    },
+    {
+      "role": "strategist",
+      "parsed": true,
+      "response": "{\n  \"hypotheses\": [\n    {\n      \"step\": 5,\n      \"agent\": \"Verification_Expert\",\n      \"mode\": \"incorrect_verification\",\n      \"rationale\": \"They instructed using an OAuth Bearer token with the MediaWiki API for a public read query and provided code that sets Authorization: Bearer <token>. MediaWiki's standard action API for read operations does not require nor accept OAuth Bearer like this; it expects no auth or a properly signed OAuth 1.0a header, and rvstart/rvend need proper timestamps and pagination via rvcontinue. This led directly to the API error and derailed the run into irrelevant browsing, ultimately yielding an incorrect final answer. If the API call had been implemented correctly (no Bearer header, correct parameters and continuation handling), the correct count could have been obtained.\",\n      \"tool\": \"code_exec\",\n      \"check\": \"Re-run the API request without the Authorization header, using action=query&prop=revisions with rvprop=ids|timestamp, rvlimit=max, rvdir=newer, rvstart=2001-01-01T00:00:00Z and rvend=2023-06-30T23:59:59Z, and handle pagination via rvcontinue until exhausted. Verify that 'query' is present and that counting revisions across all continues yields the expected total.\",\n      \"related_steps\": [0, 6, 7, 8, 9]\n    }\n  ]\n}"
+    },
+    {
+      "role": "investigator",
+      "hypothesis": 0,
+      "tool": "code_exec",
+      "parsed": true,
+      "response": "{\n  \"tool\": \"code_exec\",\n  \"execution_log\": \"1) Script imports requests and json.\\n2) Defines get_page_edits(title, start_date, end_date, token):\\n   - Prepares URL https://en.wikipedia.org/w/api.php\\n   - Sets params: action=query, format=json, prop=revisions, titles=Antidisestablishmentarianism, rvlimit=max, rvstart=2001-01-01T00:00:00Z, rvend=2023-06-30T23:59:59Z\\n   - Sets headers: Authorization: Bearer YOUR_ACCESS_TOKEN\\n   - Performs requests.get(url, headers=headers, params=params)\\n   - Prints status code, headers, and response text\\n   - Parses JSON and checks for 'query' key; if missing, raises ValueError\\n   - If present, counts revisions length and returns it.\\n3) main(): initializes variables, then loops while more_edits:\\n   - Calls get_page_edits(...)\\n   - Adds count to total\\n   - Sets more_edits = (count == 500)\\n   - Prints total at end.\\n4) Execution with provided token placeholder (or invalid token) sends Authorization: Bearer <token>.\\n5) MediaWiki API returns an error JSON with an 'error' object indicating invalid access token; HTTP 200.\\n6) After printing debug info, code checks 'query' in data; it's absent, so it raises ValueError and terminates before printing total.\",\n  \"expected_output\": \"For a correct implementation of a public read query to MediaWiki action API: \\n- Remove Authorization header entirely (no token needed) or use proper OAuth 1.0a signing (not Bearer) if auth were required.\\n- Include rvdir=newer and rvprop=ids|timestamp to ensure proper ordering and minimal payload.\\n- Implement pagination using rvcontinue until exhausted.\\n- The program should accumulate counts across all continuations and print a single line such as:\\n\\\"Total edits made to the Wikipedia page on Antidisestablishmentarianism until June 2023: 2732\\\"\\n- No exception should be raised, and the API responses should contain a 'query' key with pages[...]revisions for each batch.\",\n  \"observed_output\": \"exitcode: 1 (execution failed)\\nCode output: Traceback (most recent call last):\\n  File \\\"/home/CaptainAgent/groupchat/tmp_code_73ca303802da6c2857c3682499f347fc.py\\\", line 52, in <module>\\n    main()\\n  File \\\"/home/CaptainAgent/groupchat/tmp_code_73ca303802da6c2857c3682499f347fc.py\\\", line 45, in main\\n    count = get_page_edits(title, start_date, end_date, token)\\n  File \\\"/home/CaptainAgent/groupchat/tmp_code_73ca303802da6c2857c3682499f347fc.py\\\", line 29, in get_page_edits\\n    raise ValueError(\\\"API response does not contain 'query' key. Please check the API request and token.\\\")\\nValueError: API response does not contain 'query' key. Please check the API request and token.\\nStatus Code: 200\\nResponse Headers: {...}\\nResponse Content: {\\\"error\\\":{\\\"code\\\":\\\"mwoauth-invalid-authorization\\\",\\\"info\\\":\\\"The authorization headers in your request are not valid: Invalid access token\\\",\\\"*\\\":\\\"See https://en.wikipedia.org/w/api.php for API usage. ...\\\"},\\\"servedby\\\":\\\"mw-api-ext...\\\"}\",\n  \"discrepancy\": \"--- expected\\n+++ observed\\n@@\\n- Program should make unauthenticated (no Authorization header) read requests, follow rvcontinue pagination, and print:\\n- Total edits made to the Wikipedia page on Antidisestablishmentarianism until June 2023: 2732\\n+ Program sent Authorization: Bearer <token> for a read query, received error mwoauth-invalid-authorization, lacked 'query' in response, and raised:\\n+ ValueError: API response does not contain 'query' key. Please check the API request and token.\\n\",\n  \"supports_hypothesis\": true,\n  \"conclusive\": true,\n  \"confidence\": 0.83,\n  \"notes\": \"The run failed due to using a Bearer token in the Authorization header for a public read request, triggering mwoauth-invalid-authorization. The code also lacked rvdir and rvcontinue handling, so even with a valid response it would not have paginated. The observed error matches the hypothesized failure mode and shows why the count was not obtained.\"\n}"
+    },
+    {
+      "role": "arbiter",
+      "parsed": true,
+      "response": "{\n  \"agent\": \"Verification_Expert\",\n  \"step\": 5,\n  \"mode\": \"incorrect_verification\",\n  \"confidence\": 0.83,\n  \"reason\": \"They directed use of an OAuth Bearer token for a public MediaWiki read query and provided code that sent Authorization: Bearer <token>, which the API rejected (mwoauth-invalid-authorization). This prevented receiving the 'query' payload and halted counting; even pagination was not handled. Correcting this earliest mistake (no auth header and proper parameters/continuation) would have allowed obtaining the correct edit count.\",\n  \"chosen_hypothesis\": 0,\n  \"novel_and_robust\": true,\n  \"signature\": {\n    \"mast_mode\": \"incorrect_verification\",\n    \"tool\": \"MediaWiki Action API\",\n    \"args\": [\"HTTP headers\", \"query params\", \"pagination\"],\n    \"context\": [\"verification agent\", \"web data retrieval\"]\n  },\n  \"guard\": \"For MediaWiki read-only queries, do not send an OAuth Bearer token; use no auth and handle rvcontinue pagination correctly.\"\n}"
+    }
+  ],
+  "error_family": "incorrect_verification",
+  "error_reason": "They directed use of an OAuth Bearer token for a public MediaWiki read query and provided code that sent Authorization: Bearer <token>, which the API rejected (mwoauth-invalid-authorization). This prevented receiving the 'query' payload and halted counting; even pagination was not handled. Correcting this earliest mistake (no auth header and proper parameters/continuation) would have allowed obtaining the correct edit count.",
+  "confidence": 0.83,
+  "hypotheses": [
+    {
+      "step": 5,
+      "agent": "Verification_Expert",
+      "agent_fixed": false,
+      "mode": "incorrect_verification",
+      "rationale": "They instructed using an OAuth Bearer token with the MediaWiki API for a public read query and provided code that sets Authorization: Bearer <token>. MediaWiki's standard action API for read operations does not require nor accept OAuth Bearer like this; it expects no auth or a properly signed OAuth 1.0a header, and rvstart/rvend need proper timestamps and pagination via rvcontinue. This led directly to the API error and derailed the run into irrelevant browsing, ultimately yielding an incorrect final answer. If the API call had been implemented correctly (no Bearer header, correct parameters and continuation handling), the correct count could have been obtained.",
+      "tool": "code_exec",
+      "check": "Re-run the API request without the Authorization header, using action=query&prop=revisions with rvprop=ids|timestamp, rvlimit=max, rvdir=newer, rvstart=2001-01-01T00:00:00Z and rvend=2023-06-30T23:59:59Z, and handle pagination via rvcontinue until exhausted. Verify that 'query' is present and that counting revisions across all continues yields the expected total.",
+      "related_steps": [
+        0,
+        6,
+        7,
+        8,
+        9
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "tool": "code_exec",
+      "supports_hypothesis": true,
+      "conclusive": true,
+      "confidence": 0.83,
+      "discrepancy": "--- expected\n+++ observed\n@@\n- Program should make unauthenticated (no Authorization header) read requests, follow rvcontinue pagination, and print:\n- Total edits made to the Wikipedia page on Antidisestablishmentarianism until June 2023: 2732\n+ Program sent Authorization: Bearer <token> for a read query, received error mwoauth-invalid-authorization, lacked 'query' in response, and raised:\n+ ValueError: API response does not contain 'query' key. Please check the API request and token.",
+      "parse_error": false,
+      "execution_log": "1) Script imports requests and json.\n2) Defines get_page_edits(title, start_date, end_date, token):\n   - Prepares URL https://en.wikipedia.org/w/api.php\n   - Sets params: action=query, format=json, prop=revisions, titles=Antidisestablishmentarianism, rvlimit=max, rvstart=2001-01-01T00:00:00Z, rvend=2023-06-30T23:59:59Z\n   - Sets headers: Authorization: Bearer YOUR_ACCESS_TOKEN\n   - Performs requests.get(url, headers=headers, params=params)\n   - Prints status code, headers, and response text\n   - Parses JSON and checks for 'query' key; if missing, raises ValueError\n   - If present, counts revisions length and returns it.\n3) main(): initializes variables, then loops while more_edits:\n   - Calls get_page_edits(...)\n   - Adds count to total\n   - Sets more_edits = (count == 500)\n   - Prints total at end.\n4) Execution with provided token placeholder (or invalid token) sends Authorization: Bearer <token>.\n5) MediaWiki API returns an error JSON with an 'error' object indicating invalid access token; HTTP 200.\n6) After printing debug info, code checks 'query' in data; it's absent, so it raises ValueError and terminates before printing total.",
+      "expected_output": "For a correct implementation of a public read query to MediaWiki action API: \n- Remove Authorization header entirely (no token needed) or use proper OAuth 1.0a signing (not Bearer) if auth were required.\n- Include rvdir=newer and rvprop=ids|timestamp to ensure proper ordering and minimal payload.\n- Implement pagination using rvcontinue until exhausted.\n- The program should accumulate counts across all continuations and print a single line such as:\n\"Total edits made to the Wikipedia page on Antidisestablishmentarianism until June 2023: 2732\"\n- No exception should be raised, and the API responses should contain a 'query' key with pages[...]revisions for each batch.",
+      "observed_output": "exitcode: 1 (execution failed)\nCode output: Traceback (most recent call last):\n  File \"/home/CaptainAgent/groupchat/tmp_code_73ca303802da6c2857c3682499f347fc.py\", line 52, in <module>\n    main()\n  File \"/home/CaptainAgent/groupchat/tmp_code_73ca303802da6c2857c3682499f347fc.py\", line 45, in main\n    count = get_page_edits(title, start_date, end_date, token)\n  File \"/home/CaptainAgent/groupchat/tmp_code_73ca303802da6c2857c3682499f347fc.py\", line 29, in get_page_edits\n    raise ValueError(\"API response does not contain 'query' key. Please check the API request and token.\")\nValueError: API response does not contain 'query' key. Please check the API request and token.\nStatus Code: 200\nResponse Headers: {...}\nResponse Content: {\"error\":{\"code\":\"mwoauth-invalid-authorization\",\"info\":\"The authorization headers in your request are not valid: Invalid access token\",\"*\":\"See https://en.wikipedia.org/w/api.php for API usage. ...\"},\"servedby\":\"mw-api-ext...\"}",
+      "notes": "The run failed due to using a Bearer token in the Authorization header for a public read request, triggering mwoauth-invalid-authorization. The code also lacked rvdir and rvcontinue handling, so even with a valid response it would not have paginated. The observed error matches the hypothesized failure mode and shows why the count was not obtained."
+    }
+  ],
+  "verdict": {
+    "agent": "Verification_Expert",
+    "agent_fixed": false,
+    "step": 5,
+    "mode": "incorrect_verification",
+    "confidence": 0.83,
+    "reason": "They directed use of an OAuth Bearer token for a public MediaWiki read query and provided code that sent Authorization: Bearer <token>, which the API rejected (mwoauth-invalid-authorization). This prevented receiving the 'query' payload and halted counting; even pagination was not handled. Correcting this earliest mistake (no auth header and proper parameters/continuation) would have allowed obtaining the correct edit count.",
+    "chosen_hypothesis": 0,
+    "novel_and_robust": true,
+    "signature": {
+      "tool": "MediaWiki Action API",
+      "api": "default",
+      "arg_schema": [
+        "HTTP headers",
+        "query params",
+        "pagination"
+      ],
+      "context_slots": [
+        "verification agent",
+        "web data retrieval"
+      ],
+      "err_family": "incorrect_verification"
+    },
+    "guard": "For MediaWiki read-only queries, do not send an OAuth Bearer token; use no auth and handle rvcontinue pagination correctly."
+  },
+  "arbiter_saw_only_inconclusive": false,
+  "memory_candidate": {
+    "eligible": true,
+    "verified": true,
+    "confidence": 0.83,
+    "novel_and_robust": true,
+    "signature": {
+      "tool": "MediaWiki Action API",
+      "api": "default",
+      "arg_schema": [
+        "HTTP headers",
+        "query params",
+        "pagination"
+      ],
+      "context_slots": [
+        "verification agent",
+        "web data retrieval"
+      ],
+      "err_family": "incorrect_verification"
+    },
+    "guard": "For MediaWiki read-only queries, do not send an OAuth Bearer token; use no auth and handle rvcontinue pagination correctly.",
+    "tau": 0.7
+  },
+  "failure_stage": null,
+  "structure": [
+    {
+      "step": 0,
+      "agent": "WebServing_Expert",
+      "action": "code",
+      "addressee": null
+    },
+    {
+      "step": 1,
+      "agent": "WebServing_Expert",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 2,
+      "agent": "WebServing_Expert",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 3,
+      "agent": "WebServing_Expert",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 4,
+      "agent": "Computer_terminal",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 5,
+      "agent": "Verification_Expert",
+      "action": "code",
+      "addressee": null
+    },
+    {
+      "step": 6,
+      "agent": "Computer_terminal",
+      "action": "execution_output",
+      "addressee": null
+    },
+    {
+      "step": 7,
+      "agent": "WebServing_Expert",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 8,
+      "agent": "WebServing_Expert",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 9,
+      "agent": "WebServing_Expert",
+      "action": "message",
+      "addressee": null
+    }
+  ],
+  "tags": [
+    {
+      "step": 0,
+      "mode": "task_derailment",
+      "evidence": "Collect information from the general task, follow the suggestions from manager to solve the task.",
+      "severity": 0.6,
+      "chunk": 0
+    },
+    {
+      "step": 3,
+      "mode": "incorrect_verification",
+      "evidence": "Once you have obtained your API token, you can use it to authenticate your requests to the Wikimedia API.",
+      "severity": 0.7,
+      "chunk": 0
+    },
+    {
+      "step": 5,
+      "mode": "fail_task_spec",
+      "evidence": "Replace 'YOUR_ACCESS_TOKEN' with your actual API token and run the code again. This should give you the number of edits...",
+      "severity": 0.7,
+      "chunk": 0
+    },
+    {
+      "step": 5,
+      "mode": "incorrect_verification",
+      "evidence": "headers = {'Authorization': f'Bearer {token}'}",
+      "severity": 0.95,
+      "chunk": 0
+    },
+    {
+      "step": 6,
+      "mode": "incorrect_verification",
+      "evidence": "ValueError: API response does not contain 'query' key... Invalid access token",
+      "severity": 0.9,
+      "chunk": 0
+    },
+    {
+      "step": 7,
+      "mode": "task_derailment",
+      "evidence": "A Bing search for 'number of edits to Wikipedia page on Antidisestablishmentarianism from inception to June 2023' found 10 results:",
+      "severity": 0.8,
+      "chunk": 0
+    },
+    {
+      "step": 8,
+      "mode": "task_derailment",
+      "evidence": "Title: Antidisestablishmentarianism - Wikipedia",
+      "severity": 0.7,
+      "chunk": 0
+    },
+    {
+      "step": 9,
+      "mode": "task_derailment",
+      "evidence": "Antidisestablishmentarianism is a political movement in the UK...",
+      "severity": 0.95,
+      "chunk": 0
+    },
+    {
+      "step": 9,
+      "mode": "fail_task_spec",
+      "evidence": "Antidisestablishmentarianism is a political movement in the UK...",
+      "severity": 0.9,
+      "chunk": 0
+    }
+  ],
+  "graph": {
+    "edges": [
+      {
+        "from": 0,
+        "to": 1,
+        "kind": "instructs",
+        "source": "llm",
+        "why": "Step 1 searches for how to obtain a Wikimedia API token per Step 0 plan."
+      },
+      {
+        "from": 1,
+        "to": 2,
+        "kind": "cites",
+        "source": "llm",
+        "why": "Step 2 opens a result from the search in Step 1."
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "kind": "cites",
+        "source": "llm",
+        "why": "Step 3 summarizes instructions from the Managing API keys page opened in Step 2."
+      },
+      {
+        "from": 3,
+        "to": 4,
+        "kind": "responds_to",
+        "source": "llm",
+        "why": "Step 4 notes there was no executable code in Step 3 to run."
+      },
+      {
+        "from": 0,
+        "to": 5,
+        "kind": "instructs",
+        "source": "llm",
+        "why": "Step 5 continues executing the plan to fetch edit history with code."
+      },
+      {
+        "from": 5,
+        "to": 6,
+        "kind": "executes",
+        "source": "llm",
+        "why": "Step 6 shows the result of running the code provided in Step 5."
+      },
+      {
+        "from": 0,
+        "to": 7,
+        "kind": "instructs",
+        "source": "llm",
+        "why": "Step 7 pivots to search for the edit count to solve the general task from Step 0."
+      },
+      {
+        "from": 7,
+        "to": 8,
+        "kind": "cites",
+        "source": "llm",
+        "why": "Step 8 opens the Antidisestablishmentarianism Wikipedia page found via Step 7 search."
+      },
+      {
+        "from": 8,
+        "to": 9,
+        "kind": "cites",
+        "source": "llm",
+        "why": "Step 9 summarizes content from the Wikipedia article opened in Step 8."
+      }
+    ],
+    "n_steps": 10
+  },
+  "erf": {
+    "steps": [
+      0,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "depth": {
+      "0": 3,
+      "5": 4,
+      "6": 3,
+      "7": 2,
+      "8": 1,
+      "9": 0
+    },
+    "floor_applied": true,
+    "masked": [
+      [
+        1,
+        4,
+        "erf"
+      ]
+    ],
+    "chars": 9385,
+    "step_chars": 1500
+  },
+  "paper_params": {
+    "max_hypotheses": 1,
+    "chunk_chars": 12000,
+    "condensed_chars": 10000,
+    "include_mast_examples": false,
+    "sequential_edges": "fallback"
+  }
+}

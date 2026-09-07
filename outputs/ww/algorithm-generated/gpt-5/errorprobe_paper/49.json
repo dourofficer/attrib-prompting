@@ -1,0 +1,348 @@
+{
+  "id": "49",
+  "filename": "49.json",
+  "question_id": "cffe0e32-c9a6-4c52-9877-78ceb4aaa9fb",
+  "method": "errorprobe_paper",
+  "mode": "paper",
+  "model": "gpt-5",
+  "backend": "openai",
+  "gt_in_prompt": true,
+  "predicted_agent": "Validation_Expert",
+  "predicted_step": 6,
+  "gold_agent": "Validation_Expert",
+  "gold_step": "2",
+  "raw": "{\n  \"agent\": \"Validation_Expert\",\n  \"step\": 6,\n  \"mode\": \"incomplete_verification\",\n  \"confidence\": 0.86,\n  \"reason\": \"The data parser failed to recognize the 'Gifts:' section header due to a strict equality check ('Gifts' vs 'Gifts:'), resulting in an empty gifts list and no gift assignments despite the raw text clearly containing them. This upstream data-loss forced later inference from incomplete data and led to the wrong final answer. Correctly extracting the gifts would have enabled accurate mapping and identification of the non-giver.\",\n  \"chosen_hypothesis\": 0,\n  \"novel_and_robust\": true,\n  \"signature\": {\n    \"mast_mode\": \"incomplete_verification\",\n    \"tool\": \"code_exec\",\n    \"args\": [\"raw_text parsing\"],\n    \"context\": [\"Validation_Expert\", \"logic puzzle data extraction\"]\n  },\n  \"guard\": \"When parsing section headers, normalize and allow trailing punctuation (e.g., colons) so that all sections, especially 'Gifts', are captured.\"\n}",
+  "calls": [
+    {
+      "role": "tagger",
+      "chunk": 0,
+      "steps": [
+        0,
+        9
+      ],
+      "parsed": true,
+      "response": "{\n  \"tags\": [\n    {\n      \"step\": 2,\n      \"mode\": \"fail_task_spec\",\n      \"evidence\": \"Let's start by extracting the text from the provided document using Optical Character Recognition (OCR).\",\n      \"severity\": 0.6\n    },\n    {\n      \"step\": 6,\n      \"mode\": \"incomplete_verification\",\n      \"evidence\": \"Based on the extracted text, let's structure the data in a list of dictionaries for each employee, including their assigned recipient and interests.\",\n      \"severity\": 0.5\n    },\n    {\n      \"step\": 8,\n      \"mode\": \"task_derailment\",\n      \"evidence\": \"We need to manually map the gifts given to the recipients and ensure that we correctly identify the missing gift assignment.\",\n      \"severity\": 0.7\n    },\n    {\n      \"step\": 8,\n      \"mode\": \"incorrect_verification\",\n      \"evidence\": \"Analyze the data to match each gift with the likely recipient based on their profiles.\",\n      \"severity\": 0.8\n    }\n  ],\n  \"summary\": \"The agents deviated from extracting explicit gift assignments in the document and instead inferred recipients from interests without proper verification, leading to a heuristically derived and incorrect conclusion about who did not give a gift.\"\n}"
+    },
+    {
+      "role": "dependency",
+      "chunk": 0,
+      "steps": [
+        0,
+        9
+      ],
+      "parsed": true,
+      "response": "{\n  \"edges\": [\n    {\"from\": 0, \"to\": 1, \"kind\": \"responds_to\", \"why\": \"Computer_terminal indicates no code to execute in response to the manager’s prompt in step 0.\"},\n    {\"from\": 0, \"to\": 2, \"kind\": \"cites\", \"why\": \"Validation_Expert references the document path and task details provided in step 0.\"},\n    {\"from\": 2, \"to\": 3, \"kind\": \"executes\", \"why\": \"Computer_terminal runs the OCR code requested in step 2.\"},\n    {\"from\": 3, \"to\": 4, \"kind\": \"verifies\", \"why\": \"DataExtraction_Expert reacts to the OCR failure from step 3 and changes approach.\"},\n    {\"from\": 2, \"to\": 4, \"kind\": \"cites\", \"why\": \"Builds on the plan to extract text from the provided document initiated in step 2.\"},\n    {\"from\": 4, \"to\": 5, \"kind\": \"executes\", \"why\": \"Computer_terminal executes the python-docx extraction code from step 4.\"},\n    {\"from\": 5, \"to\": 6, \"kind\": \"verifies\", \"why\": \"Validation_Expert uses the extracted text from step 5 to proceed with structuring.\"},\n    {\"from\": 5, \"to\": 6, \"kind\": \"cites\", \"why\": \"The structuring code in step 6 consumes the text extracted in step 5.\"},\n    {\"from\": 6, \"to\": 7, \"kind\": \"executes\", \"why\": \"Computer_terminal runs the structuring code produced in step 6.\"},\n    {\"from\": 7, \"to\": 8, \"kind\": \"verifies\", \"why\": \"DataExtraction_Expert notes gift_assignments is empty based on the output from step 7 and adjusts plan.\"},\n    {\"from\": 5, \"to\": 8, \"kind\": \"cites\", \"why\": \"Step 8 uses the profiles and gifts lists derived from the text extracted in step 5.\"},\n    {\"from\": 8, \"to\": 9, \"kind\": \"executes\", \"why\": \"Computer_terminal executes the matching code devised in step 8 to identify the non-giver.\"}\n  ]\n}"
+    },
+    {
+      "role": "strategist",
+      "parsed": true,
+      "response": "{\n  \"hypotheses\": [\n    {\n      \"step\": 6,\n      \"agent\": \"Validation_Expert\",\n      \"mode\": \"incomplete_verification\",\n      \"rationale\": \"The parser produced an empty gifts list and no gift_assignments despite the raw text (step 5) clearly containing the full gifts section. This upstream data-loss forced later agents to manually infer mappings (step 8), leading to the wrong non-giver. Had step 6 correctly extracted all gifts (and any assignment cues) into structured data, the final answer would have been correct.\",\n      \"tool\": \"code_exec\",\n      \"check\": \"Re-run the structure_data function on the step 5 extracted_text and inspect whether the `gifts` list and any assignment details are correctly parsed. Compare the parser’s regex/splitting logic to the actual text format (notably the gifts block) to confirm it fails to capture the items. Then verify that fixing the parsing to include all 11 gifts enables an accurate mapping and identifies the correct non-giver.\",\n      \"related_steps\": [5, 7, 8, 9]\n    }\n  ]\n}"
+    },
+    {
+      "role": "investigator",
+      "hypothesis": 0,
+      "tool": "code_exec",
+      "parsed": true,
+      "response": "{\n  \"tool\": \"code_exec\",\n  \"execution_log\": \"1) structure_data() initializes data with keys: employees=[], gift_assignments=[], profiles={}, gifts=[].\\n2) Split extracted_text into lines and iterate, maintaining `section`.\\n3) Encounter 'Employees' -> section='employees'. Subsequent non-empty lines until the blank after 'Alex' are appended to employees, including handling of leading spaces; result: 12 names captured.\\n4) Encounter 'Gift Assignments' -> section='gift_assignments'. There are no subsequent non-empty assignment lines before 'Profiles', so none are added.\\n5) Encounter 'Profiles' -> section='profiles'. For each 'Name: hobby1, hobby2, hobby3' line, regex matches and splits hobbies by comma; 12 profile entries captured correctly.\\n6) Encounter 'Gifts:' (with a trailing colon) -> code only checks `elif line == \\\"Gifts\\\": section = \\\"gifts\\\"`, so this condition does NOT match. Section remains 'profiles'.\\n7) All subsequent gift lines (titles) are treated under section='profiles'; they do not match the 'name: hobbies' regex, so they are ignored. Hence no entries are added to gifts.\\n8) Function returns data with employees=12, profiles=12, gift_assignments=[], gifts=[].\\n9) The code prints this dict.\",\n  \"expected_output\": \"{'employees': ['Harry', 'Rebecca', 'Georgette', 'Micah', 'Perry', 'Tyson', 'Lucy', 'Jun', 'Sara', 'Miguel', 'Fred', 'Alex'], 'gift_assignments': [], 'profiles': {'Harry': ['Fishing', 'Camping', 'Wine'], 'Rebecca': ['Cars', 'Dogs', 'Chocolate'], 'Georgette': ['Yoga', 'Cooking', 'Green Energy'], 'Micah': ['Knitting', 'Rainy Weather', 'Books'], 'Perry': ['Old Movies', 'Rats', 'Journaling'], 'Tyson': ['Historical Fiction Novels', 'Biking', 'Parakeets'], 'Lucy': ['Coffee', 'Physics', 'Board Games'], 'Jun': ['Woodworking', 'Barbecue', 'JavaScript'], 'Sara': ['Tabletop RPGs', 'Spas', 'Music'], 'Miguel': ['Astronomy', 'Decorative Washi Tape', 'Ketchup'], 'Fred': ['Chemistry', 'Perl', 'Cats'], 'Alex': ['Surfing', 'Audrey Hepburn', 'Manga']}, 'gifts': ['Galileo Galilei biography', 'Fishing reel', 'Raku programming guide', 'Chisel set', 'Custom dice', '“War and Peace” American film copy', 'Yarn', '“One Piece” graphic novel', '“War and Peace” novel', 'Starbucks gift card', 'Foam exercise mat']}\",\n  \"observed_output\": \"Code output: {'employees': ['Harry', 'Rebecca', 'Georgette', 'Micah', 'Perry', 'Tyson', 'Lucy', 'Jun', 'Sara', 'Miguel', 'Fred', 'Alex'], 'gift_assignments': [], 'profiles': {'Harry': ['Fishing', 'Camping', 'Wine'], 'Rebecca': ['Cars', 'Dogs', 'Chocolate'], 'Georgette': ['Yoga', 'Cooking', 'Green Energy'], 'Micah': ['Knitting', 'Rainy Weather', 'Books'], 'Perry': ['Old Movies', 'Rats', 'Journaling'], 'Tyson': ['Historical Fiction Novels', 'Biking', 'Parakeets'], 'Lucy': ['Coffee', 'Physics', 'Board Games'], 'Jun': ['Woodworking', 'Barbecue', 'JavaScript'], 'Sara': ['Tabletop RPGs', 'Spas', 'Music'], 'Miguel': ['Astronomy', 'Decorative Washi Tape', 'Ketchup'], 'Fred': ['Chemistry', 'Perl', 'Cats'], 'Alex': ['Surfing', 'Audrey Hepburn', 'Manga']}, 'gifts': []}\",\n  \"discrepancy\": \"--- expected\\n+++ observed\\n {'employees': ['Harry', 'Rebecca', 'Georgette', 'Micah', 'Perry', 'Tyson', 'Lucy', 'Jun', 'Sara', 'Miguel', 'Fred', 'Alex'], 'gift_assignments': [], 'profiles': {'Harry': ['Fishing', 'Camping', 'Wine'], 'Rebecca': ['Cars', 'Dogs', 'Chocolate'], 'Georgette': ['Yoga', 'Cooking', 'Green Energy'], 'Micah': ['Knitting', 'Rainy Weather', 'Books'], 'Perry': ['Old Movies', 'Rats', 'Journaling'], 'Tyson': ['Historical Fiction Novels', 'Biking', 'Parakeets'], 'Lucy': ['Coffee', 'Physics', 'Board Games'], 'Jun': ['Woodworking', 'Barbecue', 'JavaScript'], 'Sara': ['Tabletop RPGs', 'Spas', 'Music'], 'Miguel': ['Astronomy', 'Decorative Washi Tape', 'Ketchup'], 'Fred': ['Chemistry', 'Perl', 'Cats'], 'Alex': ['Surfing', 'Audrey Hepburn', 'Manga']},\\n- 'gifts': ['Galileo Galilei biography', 'Fishing reel', 'Raku programming guide', 'Chisel set', 'Custom dice', '“War and Peace” American film copy', 'Yarn', '“One Piece” graphic novel', '“War and Peace” novel', 'Starbucks gift card', 'Foam exercise mat']}\\n+ 'gifts': []}\\n\",\n  \"supports_hypothesis\": true,\n  \"conclusive\": true,\n  \"confidence\": 0.86,\n  \"notes\": \"Root cause: the parser checks for line == 'Gifts' but the input uses 'Gifts:' with a colon; thus the section never switches to 'gifts' and all subsequent lines are dropped, yielding an empty gifts list. This necessitated manual inference downstream, matching the suspected incomplete_verification failure. Fixing the section header match (e.g., allowing trailing colon) correctly captures all 11 gifts.\"\n}"
+    },
+    {
+      "role": "arbiter",
+      "parsed": true,
+      "response": "{\n  \"agent\": \"Validation_Expert\",\n  \"step\": 6,\n  \"mode\": \"incomplete_verification\",\n  \"confidence\": 0.86,\n  \"reason\": \"The data parser failed to recognize the 'Gifts:' section header due to a strict equality check ('Gifts' vs 'Gifts:'), resulting in an empty gifts list and no gift assignments despite the raw text clearly containing them. This upstream data-loss forced later inference from incomplete data and led to the wrong final answer. Correctly extracting the gifts would have enabled accurate mapping and identification of the non-giver.\",\n  \"chosen_hypothesis\": 0,\n  \"novel_and_robust\": true,\n  \"signature\": {\n    \"mast_mode\": \"incomplete_verification\",\n    \"tool\": \"code_exec\",\n    \"args\": [\"raw_text parsing\"],\n    \"context\": [\"Validation_Expert\", \"logic puzzle data extraction\"]\n  },\n  \"guard\": \"When parsing section headers, normalize and allow trailing punctuation (e.g., colons) so that all sections, especially 'Gifts', are captured.\"\n}"
+    }
+  ],
+  "error_family": "incomplete_verification",
+  "error_reason": "The data parser failed to recognize the 'Gifts:' section header due to a strict equality check ('Gifts' vs 'Gifts:'), resulting in an empty gifts list and no gift assignments despite the raw text clearly containing them. This upstream data-loss forced later inference from incomplete data and led to the wrong final answer. Correctly extracting the gifts would have enabled accurate mapping and identification of the non-giver.",
+  "confidence": 0.86,
+  "hypotheses": [
+    {
+      "step": 6,
+      "agent": "Validation_Expert",
+      "agent_fixed": false,
+      "mode": "incomplete_verification",
+      "rationale": "The parser produced an empty gifts list and no gift_assignments despite the raw text (step 5) clearly containing the full gifts section. This upstream data-loss forced later agents to manually infer mappings (step 8), leading to the wrong non-giver. Had step 6 correctly extracted all gifts (and any assignment cues) into structured data, the final answer would have been correct.",
+      "tool": "code_exec",
+      "check": "Re-run the structure_data function on the step 5 extracted_text and inspect whether the `gifts` list and any assignment details are correctly parsed. Compare the parser’s regex/splitting logic to the actual text format (notably the gifts block) to confirm it fails to capture the items. Then verify that fixing the parsing to include all 11 gifts enables an accurate mapping and identifies the correct non-giver.",
+      "related_steps": [
+        5,
+        7,
+        8,
+        9
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "tool": "code_exec",
+      "supports_hypothesis": true,
+      "conclusive": true,
+      "confidence": 0.86,
+      "discrepancy": "--- expected\n+++ observed\n {'employees': ['Harry', 'Rebecca', 'Georgette', 'Micah', 'Perry', 'Tyson', 'Lucy', 'Jun', 'Sara', 'Miguel', 'Fred', 'Alex'], 'gift_assignments': [], 'profiles': {'Harry': ['Fishing', 'Camping', 'Wine'], 'Rebecca': ['Cars', 'Dogs', 'Chocolate'], 'Georgette': ['Yoga', 'Cooking', 'Green Energy'], 'Micah': ['Knitting', 'Rainy Weather', 'Books'], 'Perry': ['Old Movies', 'Rats', 'Journaling'], 'Tyson': ['Historical Fiction Novels', 'Biking', 'Parakeets'], 'Lucy': ['Coffee', 'Physics', 'Board Games'], 'Jun': ['Woodworking', 'Barbecue', 'JavaScript'], 'Sara': ['Tabletop RPGs', 'Spas', 'Music'], 'Miguel': ['Astronomy', 'Decorative Washi Tape', 'Ketchup'], 'Fred': ['Chemistry', 'Perl', 'Cats'], 'Alex': ['Surfing', 'Audrey Hepburn', 'Manga']},\n- 'gifts': ['Galileo Galilei biography', 'Fishing reel', 'Raku programming guide', 'Chisel set', 'Custom dice', '“War and Peace” American film copy', 'Yarn', '“One Piece” graphic novel', '“War and Peace” novel', 'Starbucks gift card', 'Foam exercise mat']}\n+ 'gifts': []}",
+      "parse_error": false,
+      "execution_log": "1) structure_data() initializes data with keys: employees=[], gift_assignments=[], profiles={}, gifts=[].\n2) Split extracted_text into lines and iterate, maintaining `section`.\n3) Encounter 'Employees' -> section='employees'. Subsequent non-empty lines until the blank after 'Alex' are appended to employees, including handling of leading spaces; result: 12 names captured.\n4) Encounter 'Gift Assignments' -> section='gift_assignments'. There are no subsequent non-empty assignment lines before 'Profiles', so none are added.\n5) Encounter 'Profiles' -> section='profiles'. For each 'Name: hobby1, hobby2, hobby3' line, regex matches and splits hobbies by comma; 12 profile entries captured correctly.\n6) Encounter 'Gifts:' (with a trailing colon) -> code only checks `elif line == \"Gifts\": section = \"gifts\"`, so this condition does NOT match. Section remains 'profiles'.\n7) All subsequent gift lines (titles) are treated under section='profiles'; they do not match the 'name: hobbies' regex, so they are ignored. Hence no entries are added to gifts.\n8) Function returns data with employees=12, profiles=12, gift_assignments=[], gifts=[].\n9) The code prints this dict.",
+      "expected_output": "{'employees': ['Harry', 'Rebecca', 'Georgette', 'Micah', 'Perry', 'Tyson', 'Lucy', 'Jun', 'Sara', 'Miguel', 'Fred', 'Alex'], 'gift_assignments': [], 'profiles': {'Harry': ['Fishing', 'Camping', 'Wine'], 'Rebecca': ['Cars', 'Dogs', 'Chocolate'], 'Georgette': ['Yoga', 'Cooking', 'Green Energy'], 'Micah': ['Knitting', 'Rainy Weather', 'Books'], 'Perry': ['Old Movies', 'Rats', 'Journaling'], 'Tyson': ['Historical Fiction Novels', 'Biking', 'Parakeets'], 'Lucy': ['Coffee', 'Physics', 'Board Games'], 'Jun': ['Woodworking', 'Barbecue', 'JavaScript'], 'Sara': ['Tabletop RPGs', 'Spas', 'Music'], 'Miguel': ['Astronomy', 'Decorative Washi Tape', 'Ketchup'], 'Fred': ['Chemistry', 'Perl', 'Cats'], 'Alex': ['Surfing', 'Audrey Hepburn', 'Manga']}, 'gifts': ['Galileo Galilei biography', 'Fishing reel', 'Raku programming guide', 'Chisel set', 'Custom dice', '“War and Peace” American film copy', 'Yarn', '“One Piece” graphic novel', '“War and Peace” novel', 'Starbucks gift card', 'Foam exercise mat']}",
+      "observed_output": "Code output: {'employees': ['Harry', 'Rebecca', 'Georgette', 'Micah', 'Perry', 'Tyson', 'Lucy', 'Jun', 'Sara', 'Miguel', 'Fred', 'Alex'], 'gift_assignments': [], 'profiles': {'Harry': ['Fishing', 'Camping', 'Wine'], 'Rebecca': ['Cars', 'Dogs', 'Chocolate'], 'Georgette': ['Yoga', 'Cooking', 'Green Energy'], 'Micah': ['Knitting', 'Rainy Weather', 'Books'], 'Perry': ['Old Movies', 'Rats', 'Journaling'], 'Tyson': ['Historical Fiction Novels', 'Biking', 'Parakeets'], 'Lucy': ['Coffee', 'Physics', 'Board Games'], 'Jun': ['Woodworking', 'Barbecue', 'JavaScript'], 'Sara': ['Tabletop RPGs', 'Spas', 'Music'], 'Miguel': ['Astronomy', 'Decorative Washi Tape', 'Ketchup'], 'Fred': ['Chemistry', 'Perl', 'Cats'], 'Alex': ['Surfing', 'Audrey Hepburn', 'Manga']}, 'gifts': []}",
+      "notes": "Root cause: the parser checks for line == 'Gifts' but the input uses 'Gifts:' with a colon; thus the section never switches to 'gifts' and all subsequent lines are dropped, yielding an empty gifts list. This necessitated manual inference downstream, matching the suspected incomplete_verification failure. Fixing the section header match (e.g., allowing trailing colon) correctly captures all 11 gifts."
+    }
+  ],
+  "verdict": {
+    "agent": "Validation_Expert",
+    "agent_fixed": false,
+    "step": 6,
+    "mode": "incomplete_verification",
+    "confidence": 0.86,
+    "reason": "The data parser failed to recognize the 'Gifts:' section header due to a strict equality check ('Gifts' vs 'Gifts:'), resulting in an empty gifts list and no gift assignments despite the raw text clearly containing them. This upstream data-loss forced later inference from incomplete data and led to the wrong final answer. Correctly extracting the gifts would have enabled accurate mapping and identification of the non-giver.",
+    "chosen_hypothesis": 0,
+    "novel_and_robust": true,
+    "signature": {
+      "tool": "code_exec",
+      "api": "default",
+      "arg_schema": [
+        "raw_text parsing"
+      ],
+      "context_slots": [
+        "Validation_Expert",
+        "logic puzzle data extraction"
+      ],
+      "err_family": "incomplete_verification"
+    },
+    "guard": "When parsing section headers, normalize and allow trailing punctuation (e.g., colons) so that all sections, especially 'Gifts', are captured."
+  },
+  "arbiter_saw_only_inconclusive": false,
+  "memory_candidate": {
+    "eligible": true,
+    "verified": true,
+    "confidence": 0.86,
+    "novel_and_robust": true,
+    "signature": {
+      "tool": "code_exec",
+      "api": "default",
+      "arg_schema": [
+        "raw_text parsing"
+      ],
+      "context_slots": [
+        "Validation_Expert",
+        "logic puzzle data extraction"
+      ],
+      "err_family": "incomplete_verification"
+    },
+    "guard": "When parsing section headers, normalize and allow trailing punctuation (e.g., colons) so that all sections, especially 'Gifts', are captured.",
+    "tau": 0.7
+  },
+  "failure_stage": null,
+  "structure": [
+    {
+      "step": 0,
+      "agent": "DataExtraction_Expert",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 1,
+      "agent": "Computer_terminal",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 2,
+      "agent": "Validation_Expert",
+      "action": "code",
+      "addressee": null
+    },
+    {
+      "step": 3,
+      "agent": "Computer_terminal",
+      "action": "execution_output",
+      "addressee": null
+    },
+    {
+      "step": 4,
+      "agent": "DataExtraction_Expert",
+      "action": "code",
+      "addressee": null
+    },
+    {
+      "step": 5,
+      "agent": "Computer_terminal",
+      "action": "execution_output",
+      "addressee": null
+    },
+    {
+      "step": 6,
+      "agent": "Validation_Expert",
+      "action": "code",
+      "addressee": null
+    },
+    {
+      "step": 7,
+      "agent": "Computer_terminal",
+      "action": "execution_output",
+      "addressee": null
+    },
+    {
+      "step": 8,
+      "agent": "DataExtraction_Expert",
+      "action": "code",
+      "addressee": null
+    },
+    {
+      "step": 9,
+      "agent": "Computer_terminal",
+      "action": "execution_output",
+      "addressee": null
+    }
+  ],
+  "tags": [
+    {
+      "step": 2,
+      "mode": "fail_task_spec",
+      "evidence": "Let's start by extracting the text from the provided document using Optical Character Recognition (OCR).",
+      "severity": 0.6,
+      "chunk": 0
+    },
+    {
+      "step": 6,
+      "mode": "incomplete_verification",
+      "evidence": "Based on the extracted text, let's structure the data in a list of dictionaries for each employee, including their assigned recipient and interests.",
+      "severity": 0.5,
+      "chunk": 0
+    },
+    {
+      "step": 8,
+      "mode": "task_derailment",
+      "evidence": "We need to manually map the gifts given to the recipients and ensure that we correctly identify the missing gift assignment.",
+      "severity": 0.7,
+      "chunk": 0
+    },
+    {
+      "step": 8,
+      "mode": "incorrect_verification",
+      "evidence": "Analyze the data to match each gift with the likely recipient based on their profiles.",
+      "severity": 0.8,
+      "chunk": 0
+    }
+  ],
+  "graph": {
+    "edges": [
+      {
+        "from": 0,
+        "to": 1,
+        "kind": "responds_to",
+        "source": "llm",
+        "why": "Computer_terminal indicates no code to execute in response to the manager’s prompt in step 0."
+      },
+      {
+        "from": 0,
+        "to": 2,
+        "kind": "cites",
+        "source": "llm",
+        "why": "Validation_Expert references the document path and task details provided in step 0."
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "kind": "executes",
+        "source": "llm",
+        "why": "Computer_terminal runs the OCR code requested in step 2."
+      },
+      {
+        "from": 2,
+        "to": 4,
+        "kind": "cites",
+        "source": "llm",
+        "why": "Builds on the plan to extract text from the provided document initiated in step 2."
+      },
+      {
+        "from": 3,
+        "to": 4,
+        "kind": "verifies",
+        "source": "llm",
+        "why": "DataExtraction_Expert reacts to the OCR failure from step 3 and changes approach."
+      },
+      {
+        "from": 4,
+        "to": 5,
+        "kind": "executes",
+        "source": "llm",
+        "why": "Computer_terminal executes the python-docx extraction code from step 4."
+      },
+      {
+        "from": 5,
+        "to": 6,
+        "kind": "verifies",
+        "source": "llm",
+        "why": "Validation_Expert uses the extracted text from step 5 to proceed with structuring."
+      },
+      {
+        "from": 6,
+        "to": 7,
+        "kind": "executes",
+        "source": "llm",
+        "why": "Computer_terminal runs the structuring code produced in step 6."
+      },
+      {
+        "from": 5,
+        "to": 8,
+        "kind": "cites",
+        "source": "llm",
+        "why": "Step 8 uses the profiles and gifts lists derived from the text extracted in step 5."
+      },
+      {
+        "from": 7,
+        "to": 8,
+        "kind": "verifies",
+        "source": "llm",
+        "why": "DataExtraction_Expert notes gift_assignments is empty based on the output from step 7 and adjusts plan."
+      },
+      {
+        "from": 8,
+        "to": 9,
+        "kind": "executes",
+        "source": "llm",
+        "why": "Computer_terminal executes the matching code devised in step 8 to identify the non-giver."
+      }
+    ],
+    "n_steps": 10
+  },
+  "erf": {
+    "steps": [
+      0,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "depth": {
+      "0": 5,
+      "2": 4,
+      "3": 4,
+      "4": 3,
+      "5": 2,
+      "6": 3,
+      "7": 2,
+      "8": 1,
+      "9": 0
+    },
+    "floor_applied": false,
+    "masked": [
+      [
+        1,
+        1,
+        "erf"
+      ]
+    ],
+    "chars": 6083,
+    "step_chars": 600
+  },
+  "paper_params": {
+    "max_hypotheses": 1,
+    "chunk_chars": 12000,
+    "condensed_chars": 10000,
+    "include_mast_examples": false,
+    "sequential_edges": "fallback"
+  }
+}
