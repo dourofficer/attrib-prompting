@@ -218,12 +218,13 @@ DATASET=ww MODEL=gpt-4o END_IDX=10 DRY_RUN=1 bash scripts/errorprobe/run.sh  # p
 
 The front door picks whichever config declares `MODEL`; without `MODEL` it
 runs every model in the local config. API models take the same path as the
-prompting baselines: the spec's `params` go to the API verbatim (gpt-4o
-`{max_tokens: 4000, temperature: 0.7}`, the vendored model block; gpt-5
-`{max_completion_tokens: 16384, reasoning_effort: low}`, since reasoning
-models reject a temperature), and `_run.json` records what was sent. On API
-models the paper mode runs its full budget: three hypotheses, 12k-character
-chunks, a 20k-character condensed trace.
+prompting baselines: the spec's `params` go to the API verbatim and
+`_run.json` records what was sent. Both API specs decode on the same
+handicap in kind as `qwen3.5-9b`: gpt-4o at 512 tokens, temperature 1.0 and
+top_p 0.95; gpt-5, which rejects a temperature, at the lowest reasoning
+effort with a 4096-token cap. Their paper mode runs one hypothesis on a
+10k-character condensed trace, as qwen's does;
+[`configs/README.md`](configs/README.md) explains the choice.
 
 The paper mode is opt-in: the shipped configs list only the two vendored
 modes under `modes:`, so `MODE=paper` (or `--set modes=[paper]`) is how it

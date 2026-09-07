@@ -30,20 +30,32 @@ start_idx: 0
 end_idx:   null
 
 # A spec's `params` are sent to the API verbatim — nothing else is added, and
-# _run.json records exactly what was sent. temperature/max_tokens mirror the
-# vendored config.yaml model block (0.7 / 4000); the vendored per-call
-# overrides (Analyzer 2000, Verifier 1500 at 0.3, tracing 200-500) cannot vary
-# per call through the shared backend — see IMPLEMENTATION.md.
+# _run.json records exactly what was sent. Both specs decode on a deliberate
+# handicap (configs/README.md), not on the vendored config.yaml model block
+# (0.7 / 4000); the vendored per-call overrides (Analyzer 2000, Verifier 1500
+# at 0.3, tracing 200-500) cannot vary per call through the shared backend
+# either — see IMPLEMENTATION.md.
 model_specs:
   gpt-4o:
     backend: openai
     model: gpt-4o
-    params: {max_tokens: 4000, temperature: 0.7}
+    # Decoded on the same handicap as the local qwen3.5-9b spec (user
+    # decision, 2026-09-07): a short answer budget at temperature 1.0 with a
+    # 0.95 nucleus. The paper mode also runs one hypothesis on a 10k
+    # condensed trace; chunks keep the top-level size.
+    params: {max_tokens: 512, temperature: 1.0, top_p: 0.95}
+    paper:
+      max_hypotheses: 1
+      condensed_chars: 10000
   gpt-5:
     backend: openai
     model: gpt-5
-    # No temperature: reasoning models reject a non-default one. The cap is
-    # generous because reasoning tokens are drawn from it; an exhausted cap
-    # returns empty content, which parses to the vendored failure sentinel
-    # rather than an error.
-    params: {max_completion_tokens: 16384, reasoning_effort: low}
+    # No temperature: reasoning models reject a non-default one, so the
+    # handicap is the reasoning budget instead: the lowest effort GPT-5
+    # accepts. The cap stays well above the answer length because reasoning
+    # tokens are drawn from it; an exhausted cap returns empty content, which
+    # parses to the vendored failure sentinel rather than an error.
+    params: {max_completion_tokens: 4096, reasoning_effort: minimal}
+    paper:
+      max_hypotheses: 1
+      condensed_chars: 10000

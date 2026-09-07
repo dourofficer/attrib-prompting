@@ -32,8 +32,23 @@ model_specs:
   gpt-4o:
     backend: openai
     model: gpt-4o
-    params: {max_tokens: 4000, temperature: 0.7}
+    # Decoded on the same handicap as the local qwen3.5-9b spec (user
+    # decision, 2026-09-07): a short answer budget at temperature 1.0 with a
+    # 0.95 nucleus. The paper mode also runs one hypothesis on a 10k
+    # condensed trace; chunks keep the top-level size.
+    params: {max_tokens: 512, temperature: 1.0, top_p: 0.95}
+    paper:
+      max_hypotheses: 1
+      condensed_chars: 10000
   gpt-5:
     backend: openai
     model: gpt-5
-    params: {max_completion_tokens: 16384, reasoning_effort: low}
+    # No temperature: reasoning models reject a non-default one, so the
+    # handicap is the reasoning budget instead: the lowest effort GPT-5
+    # accepts. The cap stays well above the answer length because reasoning
+    # tokens are drawn from it; an exhausted cap returns empty content, which
+    # parses to the vendored failure sentinel rather than an error.
+    params: {max_completion_tokens: 4096, reasoning_effort: minimal}
+    paper:
+      max_hypotheses: 1
+      condensed_chars: 10000

@@ -93,11 +93,18 @@ records the difference. The clip is inert because no ErrorProbe prompt
 reaches 15,872 tokens; it would only bite a method that sends whole traces.
 `deepseek-8b` runs the full budget.
 
-`params` in a spec go to the API verbatim. The shipped
-`{max_tokens: 4000, temperature: 0.7}` mirrors the vendored `config.yaml`
-model block; the vendored code additionally overrides tokens/temperature per
-call (Analyzer 2000, Verifier 1500 at 0.3, tracing calls 200–500), which the
-shared backend cannot vary — a documented deviation (`IMPLEMENTATION.md`).
+`params` in a spec go to the API verbatim. The shipped API specs carry the
+same handicap in kind as `qwen3.5-9b` (user decision, 2026-09-07): `gpt-4o`
+takes `{max_tokens: 512, temperature: 1.0, top_p: 0.95}`, and `gpt-5`, which
+rejects a temperature, takes the lowest reasoning effort it accepts,
+`{max_completion_tokens: 4096, reasoning_effort: minimal}`. The cap stays
+above the answer length because reasoning tokens come out of it. Both specs
+carry the one-hypothesis, 10k-condensed-trace `paper:` block, which reaches
+an API model unchanged (only vLLM knobs are dropped). The vendored
+`config.yaml` model block (`0.7 / 4000`) is therefore not what these runs
+use; the vendored code's per-call overrides (Analyzer 2000, Verifier 1500 at
+0.3, tracing calls 200–500) could not be reproduced through the shared
+backend in any case — a documented deviation (`IMPLEMENTATION.md`).
 
 ## Adding a closed-source model
 
@@ -113,14 +120,18 @@ model_specs:
     base_url: https://api.provider.com/v1     # optional
     api_key_env: PROVIDER_API_KEY             # optional (default OPENAI_API_KEY)
     concurrency: 8                            # optional
-    params: {max_tokens: 4000, temperature: 0.7}
+    params: {max_tokens: 512, temperature: 1.0, top_p: 0.95}   # the shipped handicap
 ```
+
+Give a new model the same `params` and `paper:` block as the shipped specs
+if its rows are to sit beside theirs; anything else is a different setting
+and belongs in its own report.
 
 Reasoning models: use `max_completion_tokens`, omit `temperature`/`top_p`
 (they reject a non-default temperature), and give a larger cap than you would
-a plain model, since reasoning tokens come out of the same budget — see the
-`gpt-5` spec. `strip_think` removes any reasoning block before the JSON
-parsers run.
+a plain model, since reasoning tokens come out of the same budget; weaken
+them through `reasoning_effort` rather than the cap — see the `gpt-5` spec.
+`strip_think` removes any reasoning block before the JSON parsers run.
 
 ## Adding local (vLLM) models
 

@@ -235,6 +235,8 @@ trace length. The paper mode is opt-in everywhere (`MODE=paper`); its knobs
 live under the configs' `paper:` key and reach the child as
 `--max-hypotheses` and friends (`EXTRA_SET="--set paper.max_hypotheses=5"`).
 There is no offline stage and nothing in `artifacts/`.
+The remaining GPT-4o / GPT-5 sweep is tracked in
+[`errorprobe/TODO.md`](errorprobe/TODO.md).
 
 ## oat/
 
@@ -434,96 +436,6 @@ first**; extend to others afterwards.
 
   ```bash
   git add outputs/ outputs-nogt/ && git commit -m "GPT-4o/GPT-5 prompting results, both GT settings"
-  ```
-
-## TODO — ErrorProbe on GPT-4o and GPT-5, both GT settings
-
-The local models (`qwen3.5-9b`, `deepseek-8b`) are complete for every mode
-the configs enable. The API models have no ErrorProbe results yet. Their
-specs already sit in `baselines/errorprobe/configs/<ds>-api.yaml` and the
-report configs already list them, so nothing below edits a config.
-
-Status (2026-09-07): the key authenticates, but every request returns
-`429 insufficient_quota` ("You have no credits remaining"). The pipeline is
-proven up to the API: the front door picks the `-api` config, both models
-receive their exact params, and a failed trajectory is skipped without
-writing, so the same command resumes it. Step 1 is the blocker.
-
-- [ ] **1. Credits.** Top up the organization at
-  platform.openai.com/settings/organization/billing, then confirm with one
-  cheap call before launching anything:
-
-  ```bash
-  export PATH=/root/dataDisk/home/thanhdo/attrib-prompting/.venv/bin:$PATH   # the repo's interpreter
-  export OPENAI_API_KEY=sk-...
-  DATASET=ww SUBSET=algorithm-generated MODEL=gpt-4o MODE=truncated END_IDX=1 bash scripts/errorprobe/run.sh
-  ```
-
-  Expect `1/1 files` and a doc at
-  `outputs-nogt/ww/algorithm-generated/gpt-4o/errorprobe/1.json` whose
-  `calls` has an `analyzer` and a `verifier` entry. A `429` in the log means
-  the balance is still empty; the run wrote nothing, rerun after fixing it.
-
-- [ ] **2. Smoke test, all three modes, both models** (2 short traces each;
-  algorithm-generated traces run 5–15 turns, so even `backward` is cheap):
-
-  ```bash
-  for M in gpt-4o gpt-5; do
-    DATASET=ww SUBSET=algorithm-generated MODEL=$M END_IDX=2 bash scripts/errorprobe/run.sh             # truncated + backward
-    DATASET=ww SUBSET=algorithm-generated MODEL=$M END_IDX=2 MODE=paper bash scripts/errorprobe/run.sh
-    DATASET=ww SUBSET=algorithm-generated MODEL=$M END_IDX=2 GT=with bash scripts/errorprobe/run.sh
-  done
-  ```
-
-  Check one doc per mode: `predicted_step` is an integer (not null),
-  `gt_in_prompt` matches the tree, and for gpt-5 `raw` is not empty — an
-  empty `raw` means the 16,384-token cap was spent on reasoning; raise
-  `max_completion_tokens` in the spec before the full run if it recurs.
-
-- [ ] **3. GPT-4o, everything.** Runs resume, so rerun after any crash:
-
-  ```bash
-  for gt in without with; do
-    for ds in ww traceelephant; do
-      DATASET=$ds MODEL=gpt-4o GT=$gt bash scripts/errorprobe/run.sh             # truncated + backward
-      DATASET=$ds MODEL=gpt-4o GT=$gt MODE=paper bash scripts/errorprobe/run.sh
-    done
-  done
-  DATASET=correct-error MODEL=gpt-4o bash scripts/errorprobe/run.sh              # truncated only, no GT
-  DATASET=correct-error MODEL=gpt-4o MODE=paper bash scripts/errorprobe/run.sh
-  ```
-
-  Cost, per trajectory: `truncated` is 2 calls; `paper` is about 7 on a
-  ten-step trace and 13 on a median hand-crafted one; `backward` is 100–300
-  on hand-crafted and magentic. Run `ww` first, then `traceelephant`. The
-  `correct-error` config enables `truncated` only (2,226 trajectories);
-  its `backward` is a deliberate opt-in (`MODE=backward`) that nobody has
-  budgeted.
-
-- [ ] **4. GPT-5, everything.** The same loop with `MODEL=gpt-5`, minus
-  `correct-error` (excluded for gpt-5 on every baseline; see
-  `report_correct-error.yaml`). Its spec sends `reasoning_effort: low`; the
-  `_run.json` records it.
-
-- [ ] **5. Check completion and evaluate**, once per dataset per setting:
-
-  ```bash
-  for gt in "" "--gt with"; do
-    for ds in ww traceelephant correct-error; do
-      python -m baselines.errorprobe.report --config baselines/errorprobe/configs/report_${ds}.yaml $gt --check-only
-      python -m baselines.errorprobe.report --config baselines/errorprobe/configs/report_${ds}.yaml $gt
-    done
-  done
-  ```
-
-  Every gpt row that was run must read `DONE`; `errorprobe_paper` rows with
-  a few `fmt_fail` are normal (the Arbiter occasionally returns no JSON).
-  Tables land in `outputs*/<ds>/reports/errorprobe/`.
-
-- [ ] **6. Commit the results:**
-
-  ```bash
-  git add outputs/ outputs-nogt/ && git commit -m "ErrorProbe: GPT-4o/GPT-5 results, both GT settings"
   ```
 
 ## Other scripts

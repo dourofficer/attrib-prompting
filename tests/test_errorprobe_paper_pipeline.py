@@ -665,6 +665,10 @@ def test_sweep_dry_run_paper_mode(name):
             assert "--max_model_len 16384" in c and "--truncate_prompt_tokens 15872" in c
             for stale in ("--gen_max_tokens 1024", "--chunk-chars 24000", "--max_model_len 24576"):
                 assert stale not in c
+        elif name.endswith("-api"):
+            # Both API specs carry the same paper block; vLLM knobs never reach them.
+            assert "--max-hypotheses 1" in c and "--chunk-chars 12000" in c
+            assert "--condensed-chars 10000" in c and "--gen_max_tokens" not in c
         else:
             assert "--max-hypotheses 3" in c and "--gen_max_tokens 512" not in c
 

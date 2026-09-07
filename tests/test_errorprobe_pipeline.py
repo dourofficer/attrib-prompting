@@ -596,25 +596,36 @@ def test_sweep_dry_run(name):
 def test_sweep_dry_run_api_params():
     """The API specs reach predict as verbatim --api-param pairs, no vLLM knobs.
 
-    gpt-4o mirrors the vendored config.yaml model block; gpt-5 is a reasoning
-    model, so it gets max_completion_tokens and no temperature.
+    Both specs carry the deliberate handicap (configs/README.md): gpt-4o the
+    qwen decode settings, gpt-5 the lowest reasoning effort, since a reasoning
+    model takes max_completion_tokens and no temperature. Their paper blocks
+    reach the child too; only vLLM knobs are dropped for an API backend.
     """
     res = run_module("baselines.errorprobe.sweep",
                      "--config", "baselines/errorprobe/configs/ww-api.yaml",
-                     "--set", "subsets=[hand-crafted]", "--set", "modes=[truncated]", "--dry-run")
+                     "--set", "subsets=[hand-crafted]", "--set", "modes=[truncated,paper]", "--dry-run")
     flat = res.stdout.replace("\\\n    ", " ")
     cmds = [" ".join(line.split()) for line in flat.splitlines()
             if "baselines.errorprobe.predict" in line]
-    assert len(cmds) == 2
-    gpt4o = next(c for c in cmds if "--model-name gpt-4o" in c)
-    gpt5 = next(c for c in cmds if "--model-name gpt-5" in c)
-    assert "--backend openai --model gpt-4o" in gpt4o
-    assert "--api-param max_tokens=4000" in gpt4o and "--api-param temperature=0.7" in gpt4o
-    assert "--backend openai --model gpt-5" in gpt5
-    assert "--api-param max_completion_tokens=16384" in gpt5
-    assert "reasoning_effort=" in gpt5 and "temperature" not in gpt5
+    assert len(cmds) == 4
+    gpt4o = [c for c in cmds if "--model-name gpt-4o" in c]
+    gpt5 = [c for c in cmds if "--model-name gpt-5" in c]
+    assert len(gpt4o) == 2 and len(gpt5) == 2
+    for c in gpt4o:
+        assert "--backend openai --model gpt-4o" in c
+        assert "--api-param max_tokens=512" in c and "--api-param temperature=1.0" in c
+        assert "--api-param top_p=0.95" in c
+    for c in gpt5:
+        assert "--backend openai --model gpt-5" in c
+        assert "--api-param max_completion_tokens=4096" in c
+        assert "reasoning_effort=" in c and "minimal" in c and "temperature" not in c
     for c in cmds:   # vLLM-only knobs never reach an API model
         assert "--temperature" not in c and "--gen_max_tokens" not in c and "--dtype" not in c
+        if "--mode paper" in c:   # the per-spec paper block does
+            assert "--max-hypotheses 1" in c and "--condensed-chars 10000" in c
+            assert "--chunk-chars 12000" in c
+        else:
+            assert "--max-hypotheses" not in c
 
 
 def test_sweep_dry_run_with_gt():

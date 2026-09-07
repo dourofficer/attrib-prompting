@@ -77,7 +77,7 @@ side-by-side table). Consequences worth restating here with line references:
 | passes raw JSON step values through; a string step crashes the process at the Verifier's `range(...)` | `coerce_step` (int-of-float-of-str) at the parse boundary; uncoercible values degrade to the vendored parse-failure sentinel (truncated mode) or a null `predicted_step` (backward mode) instead of crashing a resumable run |
 | multiplies `analysis confidence × verification_confidence` for the hypothesis confidence | same product, `None` if either value is non-numeric |
 | never puts the task answer in a prompt | `--gt without` is the default; `--gt with` appends the repo's standard `The Answer for the problem is: ...` line to the task text (`prompts.task_text`) in every task-carrying prompt — an extension, same as raffles' |
-| hardcodes per-call generation params (Analyzer 2000 tokens at T=0.7; Verifier 1500 at T=0.3; tracing calls 200–500 at T=0.7) | the shared backend sends **one** param set per run (GUIDE.md); configs ship the vendored `config.yaml` model block (`temperature: 0.7, max_tokens: 4000`), recorded verbatim in `_run.json`. Infrastructure-level deviation, same class as batching and `strip_think` |
+| hardcodes per-call generation params (Analyzer 2000 tokens at T=0.7; Verifier 1500 at T=0.3; tracing calls 200–500 at T=0.7) | the shared backend sends **one** param set per run (GUIDE.md), recorded verbatim in `_run.json`; the shipped specs decode on a deliberate handicap rather than the vendored `config.yaml` model block (`temperature: 0.7, max_tokens: 4000`) — notes 6 and 7 below. Infrastructure-level deviation, same class as batching and `strip_think` |
 | calls the LLM inline; invoke failures fall back to heuristics | LLM calls are yielded rounds; backend failures abort the trajectory at the runner and a rerun resumes it (GUIDE.md "Resume"). Only the *unparseable-response* fallbacks are reachable, and those are verbatim |
 | prints per-trace diagnostics | silent; everything lands in the output document instead |
 
@@ -106,6 +106,14 @@ side-by-side table). Consequences worth restating here with line references:
    0.7 and a 32k window. Every ErrorProbe `qwen3.5-9b` result file records
    the handicap in its `_run.json`; compare across baselines with that in
    mind. `deepseek-8b` runs on the repo-wide settings.
+7. The API models carry the same handicap in kind (user decision,
+   2026-09-07): `gpt-4o` at 512 tokens, temperature 1.0, top_p 0.95; `gpt-5`
+   at `reasoning_effort: minimal` with a 4096-token completion cap, since a
+   reasoning model rejects a temperature; both with the one-hypothesis, 10k
+   condensed-trace paper block. The other baselines run gpt-4o at 1024 or
+   more tokens and temperature 0.6 or 0.7, and gpt-5 at a 16k cap with
+   default or low effort. The vendored `config.yaml` block (0.7 / 4000) is
+   therefore not reproduced on any backbone.
 
 ## Paper mode (no vendored counterpart)
 
