@@ -114,13 +114,6 @@ already list both models, so nothing below edits a config.
   temperature 1.0, top-p 0.95). This fills the only `--` in the GPT-4o
   block of `tab:gt-full`.
 
-  Budget, from the finished runs: the without-GT CE run made 14,778 calls
-  (6.6 per trajectory), and on Who&When the with-GT prompts cost the same as
-  the without-GT ones to within 1% (`reports/cost_ww.tsv`). CE trajectories
-  are as short as WW-AG's (10 turns on average), whose paper-mode run read
-  11.6k prompt tokens and wrote 1.4k output tokens per trajectory, so expect
-  roughly 15k calls, 26M prompt tokens and 3M output tokens. Check the balance
-  first; the run resumes on file existence, so a `429` mid-way loses nothing.
   Do NOT set `OVERWRITE=1`: `outputs/correct-error/*/gpt-4o/` already holds the
   other five baselines' with-GT predictions.
 
