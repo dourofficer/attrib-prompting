@@ -126,8 +126,14 @@ The shared report reads any method dir whose files carry the required keys:
 add the method to `methods:` in `configs/report_<ds>.yaml` (or reuse
 `baselines.prompting.report` like chief/correct already do). Splits come from
 `data/` stems + `baselines.shared.common.split_data` with explicit seeds
-(ww/traceelephant 1–20, correct-error 1–3); metrics are the shared
+(ww/traceelephant/tracertraj 1–20, correct-error 1–3); metrics are the shared
 `_agent_hit`/`_step_hit` (missing prediction = wrong). Never fork these rules.
+
+Agent names with spaces (`tracertraj`'s `Product Manager`) defeat the vendored
+`Agent Name:\s*([\w_]+)` capture, so `parse_all_at_once(raw, agents)` takes
+the trajectory's agent names: the vendored capture stands whenever the report
+could score it; otherwise the earliest agent named in the answer field wins.
+Pass `agent_vocabulary(history)` from any new parser that reuses it.
 
 ## Checklist for a new adaptation
 

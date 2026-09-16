@@ -1,0 +1,78 @@
+# ErrorProbe inference config — TracerTraj, local vLLM models.
+# Closed-source API models have their own config: tracertraj-api.yaml.
+models:  [qwen3.5-9b, deepseek-8b]
+subsets: [code]
+
+data_dir:     data/tracertraj
+outputs_root: outputs/tracertraj
+
+# Vendored setting: the ErrorProbe prompts never carry the task answer, so the
+# default tree is outputs-nogt/.
+gt: without
+
+# Both vendored paths: truncated (2 calls) and the full backward walk. Two
+# method properties worth knowing on this corpus: the backward walk examines
+# at most 100 turns (backward.py MAX_TURNS_TO_EXAMINE), so code/35 (125
+# turns, gold step 5) and code/106 (151 turns, gold step 4) are out of its
+# reach; and the truncated mode reads only the last 15 turns, while the gold
+# step sits at a median relative position of 0.40.
+modes: [truncated, backward]
+
+# The paper's own pipeline (MAST tagger -> dependency graph -> Strategist /
+# Investigator / Arbiter; built from the paper, no vendored counterpart) is
+# opt-in: MODE=paper bash scripts/errorprobe/run.sh. Its knobs, read only when
+# `paper` is among the modes:
+paper:
+  max_hypotheses: 3          # Investigator calls per trajectory
+  chunk_chars: 12000         # tagger / dependency chunk size (rendered chars)
+  condensed_chars: 20000     # budget for the condensed trace the team reads
+  include_mast_examples: false   # the MAST authors' worked examples add ~17k tokens per tagger
+                                 # prompt and do not fit max_model_len: 32768
+  sequential_edges: fallback     # 'always' disables masking (ablation)
+
+# Sampling — the vendored config decodes at temperature 0.7.
+dtype:          bfloat16
+seed:           0
+temperature:    0.7
+top_p:          1.0
+gen_max_tokens: 2048
+enable_thinking: false
+
+# The truncated mode caps its own context (15 turns x 500 chars); the backward
+# mode's prompts are similarly bounded (150-800 chars per quoted turn), so a
+# moderate window suffices.
+max_model_len:          32768
+truncate_prompt_tokens: null
+gpu_memory_utilization: 0.90
+tensor_parallel_size:   1
+
+start_idx: 0
+end_idx:   null
+
+model_specs:
+  qwen3.5-9b:
+    backend: vllm
+    model_path: ../hub/Qwen/Qwen3.5-9B
+    # Decoded on a tight budget in every mode (user decision, 2026-09-06): a
+    # quarter of the answer tokens, temperature 1.0 with a 0.95 nucleus, and a
+    # 16k window whose prompts are clipped from the front. No ErrorProbe prompt
+    # exceeds that window, so the clip is inert here. The paper mode also runs
+    # one hypothesis on a 10k condensed trace; chunks keep the top-level size.
+    # These settings differ from the same model's under the other baselines --
+    # see configs/README.md.
+    gen_max_tokens: 512
+    temperature: 1.0
+    top_p: 0.95
+    max_model_len: 16384
+    truncate_prompt_tokens: 15872
+    gpu_memory_utilization: 0.6
+    paper:
+      max_hypotheses: 1
+      condensed_chars: 10000
+  deepseek-8b:
+    backend: vllm
+    model_path: ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    # Corrected tokenizer (see baselines/prompting/configs/ww.yaml).
+    tokenizer: baselines/prompting/tokenizers/deepseek-8b
+    # R1-Distill always emits <think>; 2048 would truncate the actual answer.
+    gen_max_tokens: 8192

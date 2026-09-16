@@ -10,7 +10,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/correct/run.sh" >&2
+  echo "Usage: DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<name>] [SUBSET=<subset>] bash scripts/correct/run.sh" >&2
   echo "Optional env: METHOD=correct|correct_baseline, STAGES=schemagen,similarity,predict," >&2
   echo "  GT=with|without (default: config — without, the paper setting), GPU, START_IDX," >&2
   echo "  END_IDX, DRY_RUN=1, OVERWRITE=1, CONFIG=<path>, EXTRA_SET=\"--set k=v ...\"" >&2

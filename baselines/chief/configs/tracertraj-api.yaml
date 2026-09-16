@@ -1,0 +1,42 @@
+# CHIEF inference config — TracerTraj, closed-source API models.
+# Requires the model's API key in the environment (default: OPENAI_API_KEY).
+models:  [gpt-4o, gpt-5]
+subsets: [code]
+
+data_dir:     data/tracertraj
+outputs_root: outputs/tracertraj
+# Stage-1 artifacts (retrieved exemplars) — never predictions.
+artifacts_root: artifacts/tracertraj
+
+# Vendored setting: every CHIEF stage prompt carries the task answer.
+gt: with
+
+# The knowledge base is GAIA + AssistantBench whatever the dataset — CHIEF uses
+# the exemplar as a decomposition template, not as domain knowledge. Keeping it
+# on here keeps every prompt byte-identical to the vendored one.
+rag:
+  root:  vendored/CHIEF/rag
+  kb:    [gaia, assistantbench]
+  top_k: 2
+  embed_model: sentence-transformers/all-MiniLM-L6-v2
+
+start_idx: 0
+end_idx:   null
+
+model_specs:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    # temperature 0.0 is the vendored call_model value; without it the API
+    # defaults to 1.0 and the six-stage chain stops being reproducible.
+    params: {max_tokens: 8192, temperature: 0.0}
+  gpt-5:
+    backend: openai
+    model: gpt-5
+    # No temperature: reasoning models reject a non-default one. reasoning_effort
+    # is left unset too, so the server default applies — add
+    # `reasoning_effort: medium` to pin the level the paper reports for GPT-5.2
+    # (Table 3). The cap is generous because reasoning tokens are drawn from it,
+    # and a cap exhausted while thinking returns empty content, which parses to a
+    # silent null prediction rather than an error.
+    params: {max_completion_tokens: 16384}

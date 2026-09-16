@@ -402,7 +402,7 @@ def test_predict_method_dir_override(tmp_path):
 # sweep
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIGS = ["ww-api", "correct-error-api", "traceelephant-api"]
+CONFIGS = ["ww-api", "correct-error-api", "traceelephant-api", "tracertraj-api"]
 
 
 @pytest.mark.parametrize("name", CONFIGS)

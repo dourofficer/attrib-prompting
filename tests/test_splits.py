@@ -4,7 +4,10 @@ The fixtures in ``fixtures/split_ids.json`` were captured by running the
 attribscope project's own ``split_data`` over this repo's corpus file lists
 (splits {train:0.3, val:0.2, test:0.5}), so they pin the exact per-seed
 partitions every reported number is computed on. This repo's copy must
-reproduce them bit-exactly, from ``data/`` alone.
+reproduce them bit-exactly, from ``data/`` alone. The ``tracertraj`` keys
+were captured from this repo's own ``split_data`` (2026-09-07), which the
+other keys prove is bit-identical to attribscope's; they pin the corpus
+partitions rather than re-derive them from upstream.
 """
 from __future__ import annotations
 

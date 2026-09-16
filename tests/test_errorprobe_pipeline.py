@@ -575,6 +575,7 @@ def test_predict_method_dir_override(tmp_path):
 # correct-error ships truncated-only (cost); the other two ship both modes.
 CONFIG_MODES = {"ww-api": ["truncated", "backward"],
                 "traceelephant-api": ["truncated", "backward"],
+                "tracertraj-api": ["truncated", "backward"],
                 "correct-error-api": ["truncated"]}
 
 

@@ -58,7 +58,7 @@ for method in "${METHODS[@]}"; do
         bash scripts/raffles/run.sh > "$log" 2>&1 ;;
     # ErrorProbe runs every mode its config lists; MODE narrows it to one.
     errorprobe)
-      MODEL="$MODEL" DATASET="$DATASET" GT="$GT" GPU="$GPU" ${MODE:+MODE="$MODE"} \
+      MODEL="$MODEL" DATASET="$DATASET" GT="$GT" GPU="$GPU" MODE="${MODE:-}" \
         bash scripts/errorprobe/run.sh > "$log" 2>&1 ;;
     *) echo "unknown method: $method" >&2; exit 2 ;;
   esac

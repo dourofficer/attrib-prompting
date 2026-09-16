@@ -10,7 +10,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/raffles/run.sh" >&2
+  echo "Usage: DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<name>] [SUBSET=<subset>] bash scripts/raffles/run.sh" >&2
   echo "Optional env: GT=with|without (default: config — without, the paper setting)," >&2
   echo "  MAX_ITERS=<K>, THRESHOLD=<C>, GPU, START_IDX, END_IDX, DRY_RUN=1, OVERWRITE=1," >&2
   echo "  CONFIG=<path>, EXTRA_SET=\"--set k=v ...\"" >&2

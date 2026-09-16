@@ -647,6 +647,7 @@ def _commands(stdout: str) -> list[str]:
 
 
 @pytest.mark.parametrize("name", ["ww", "ww-api", "traceelephant", "traceelephant-api",
+                                  "tracertraj", "tracertraj-api",
                                   "correct-error", "correct-error-api"])
 def test_sweep_dry_run_paper_mode(name):
     res = run_module("baselines.errorprobe.sweep", "--config",
@@ -694,7 +695,7 @@ def test_qwen_spec_is_handicapped_in_every_mode():
     The results under outputs*/…/qwen3.5-9b/errorprobe* were produced with these
     flags (their _run.json records them), so the config must keep emitting them.
     """
-    for name in ["ww", "traceelephant", "correct-error"]:
+    for name in ["ww", "traceelephant", "tracertraj", "correct-error"]:
         default = run_module("baselines.errorprobe.sweep", "--config",
                              f"baselines/errorprobe/configs/{name}.yaml", "--dry-run").stdout
         assert "weak" not in default                    # the handicap is the model, not a variant
@@ -731,7 +732,7 @@ def test_paper_args_merge_and_validation():
 
 def test_shipped_configs_keep_paper_opt_in():
     for name in ["ww", "ww-api", "traceelephant", "traceelephant-api",
-                 "correct-error", "correct-error-api"]:
+                 "tracertraj", "tracertraj-api", "correct-error", "correct-error-api"]:
         res = run_module("baselines.errorprobe.sweep", "--config",
                          f"baselines/errorprobe/configs/{name}.yaml", "--dry-run")
         assert "--mode paper" not in res.stdout.replace("\\\n    ", " ")

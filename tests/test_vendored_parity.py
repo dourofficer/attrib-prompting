@@ -225,6 +225,50 @@ def test_parse_all_at_once_variants():
     assert parse_all_at_once("no structured answer") == (None, None)
 
 
+def test_parse_all_at_once_resolves_multi_word_agents_against_the_vocabulary():
+    """tracertraj names its agents "Product Manager", which the vendored
+    ``[\\w_]+`` capture cuts to "Product". With the trajectory's agent names the
+    parser returns the agent as spelled in history; without them, or when the
+    vendored capture already names a known agent, nothing changes."""
+    from baselines.prompting.methods import parse_all_at_once
+
+    agents = ["Team Leader", "Product Manager", "Architect", "Engineer", "Data Analyst"]
+    for raw in ("Agent Name: Product Manager\nStep Number: 3",
+                "Agent Name: Product Manager (step 3)\nStep Number: 3",
+                "Agent Name: The Product Manager\nStep Number: 3",
+                "**Agent Name:** Product Manager\n**Step Number:** 3",
+                "Agent Name: (Product Manager)\n, Step Number: (3)",
+                "Agent Name: product manager\nStep Number: 3"):
+        assert parse_all_at_once(raw, agents) == ("Product Manager", 3), raw
+    # Vendored behaviour without a vocabulary.
+    assert parse_all_at_once("Agent Name: Product Manager\nStep Number: 3") == ("Product", 3)
+    # A single-word capture that is a known agent stands; "Engineers" is a
+    # different word, and a capture no agent matches keeps the vendored value.
+    assert parse_all_at_once("Agent Name: Engineer\nStep Number: 3", agents) == ("Engineer", 3)
+    assert parse_all_at_once("Agent Name: Engineers\nStep Number: 3", agents) == ("Engineers", 3)
+    assert parse_all_at_once("Agent Name: Nobody here\nStep Number: 3", agents) == ("Nobody", 3)
+    # The search stops at the next label or sentence, so an agent mentioned in
+    # the reason text never becomes the prediction.
+    one_line = "Agent Name: Team Leader, Step Number: 5, Reason: the Engineer was fine"
+    assert parse_all_at_once(one_line, agents) == ("Team Leader", 5)
+    no_agent = "Agent Name: No agent, Step Number: 5, Reason: the Engineer was fine"
+    assert parse_all_at_once(no_agent, agents) == ("No", 5)
+    sentence = "Agent Name: No agent made a mistake. The Engineer did fine\nStep Number: 5"
+    assert parse_all_at_once(sentence, agents) == ("No", 5)
+    # A capture the report would already score (gold-in-pred) is left alone.
+    ww = ["Planner", "user", "WebSurfer"]
+    assert parse_all_at_once("Agent Name: Planners (user)\nStep Number: 1", ww) == ("Planners", 1)
+    # standardize_role collapses Orchestrator variants on both sides.
+    hc = ["Orchestrator (thought)", "WebSurfer", "Orchestrator (termination condition)"]
+    assert parse_all_at_once("Agent Name: Orchestrator (thought)\nStep Number: 2", hc) == ("Orchestrator", 2)
+    # A longer known agent at the capture's own position wins.
+    assert parse_all_at_once("Agent Name: Engineer Lead\nStep Number: 2",
+                             ["Engineer", "Engineer Lead"]) == ("Engineer Lead", 2)
+    # Hyphenated names are recovered the same way.
+    assert parse_all_at_once("Agent Name: Blu-Ray_Expert\nStep Number: 2",
+                             ["Blu-Ray_Expert", "Video_Expert"]) == ("Blu-Ray_Expert", 2)
+
+
 def test_without_gt_removes_only_the_answer_line():
     # include_gt=False must equal the with-GT golden minus exactly the
     # "The Answer for the problem is: <gt>\n" line — nothing else changes.

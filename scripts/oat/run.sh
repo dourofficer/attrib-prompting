@@ -11,7 +11,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: DATASET=<ww|correct-error|traceelephant> [MODEL=<extractor>] [SUBSET=<subset>] bash scripts/oat/run.sh" >&2
+  echo "Usage: DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<extractor>] [SUBSET=<subset>] bash scripts/oat/run.sh" >&2
   echo "Optional env: GT=with|without (default: config — without, the vendored setting)," >&2
   echo "  SEEDS=42,43, LAYER=-1, AGGREGATION=mean, TOP_K=3, ALPHA=0.2, EPOCHS, PATIENCE," >&2
   echo "  STAGES=states-train,train,states-test,score, GPU, START_IDX, END_IDX," >&2

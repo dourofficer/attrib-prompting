@@ -8,7 +8,7 @@ The API specs already sit in `baselines/errorprobe/configs/<ds>-api.yaml`
 with their handicap and one-hypothesis paper block, and the report configs
 already list both models, so nothing below edits a config.
 
-- [ ] **1. Credits.** Confirm working API with one short trace before launching anything:
+- [x] **1. Credits.** Confirm working API with one short trace before launching anything:
 
   ```bash
   export PATH=/root/dataDisk/home/thanhdo/attrib-prompting/.venv/bin:$PATH   # the repo's interpreter
@@ -22,7 +22,7 @@ already list both models, so nothing below edits a config.
   `429` in the log means the balance is still empty; the run wrote nothing,
   rerun after fixing it.
 
-- [ ] **2. Smoke test, both models, both GT settings** (2 short traces each;
+- [x] **2. Smoke test, both models, both GT settings** (2 short traces each;
   algorithm-generated traces run 5–15 turns, about 7 calls per trace):
 
   ```bash
@@ -39,7 +39,7 @@ already list both models, so nothing below edits a config.
   effort; raise `max_completion_tokens` in the spec before the full run if
   it recurs.
 
-- [ ] **3. GPT-4o, paper mode everywhere.** Runs resume, so rerun after any
+- [x] **3. GPT-4o, paper mode everywhere.** Runs resume, so rerun after any
   crash:
 
   ```bash
@@ -56,12 +56,12 @@ already list both models, so nothing below edits a config.
   hand-crafted one. Run `ww` first, then `traceelephant`; `correct-error`
   is 2,226 short trajectories.
 
-- [ ] **4. GPT-5, paper mode.** The same loop with `MODEL=gpt-5`, minus
+- [x] **4. GPT-5, paper mode.** The same loop with `MODEL=gpt-5`, minus
   `correct-error` (excluded for gpt-5 on every baseline; see
   `report_correct-error.yaml`). Its spec sends `reasoning_effort: minimal`
   with a 4096-token completion cap; the `_run.json` records both.
 
-- [ ] **5. Check completion and evaluate**, once per dataset per setting:
+- [x] **5. Check completion and evaluate**, once per dataset per setting:
 
   ```bash
   for gt in "" "--gt with"; do
@@ -77,8 +77,61 @@ already list both models, so nothing below edits a config.
   `fmt_fail` are normal (the Arbiter occasionally returns no JSON). Tables
   land in `outputs*/<ds>/reports/errorprobe/`.
 
-- [ ] **6. Commit the results:**
+- [x] **6. Commit the results:**
 
   ```bash
   git add outputs/ outputs-nogt/ && git commit -m "ErrorProbe paper mode: GPT-4o/GPT-5 results, both GT settings"
   ```
+
+---
+
+## Remaining: ErrorProbe on CORRECT-Error with ground truth (GPT-4o)
+
+- [x] **7. Open models, correct-error with GT (paper mode).** Done 2026-09-14;
+  both cells (Qwen3.5-9B 59.57, DeepSeek-8B 40.39) are in the manuscript.
+
+  ```bash
+  export PATH=/root/dataDisk/home/thanhdo/attrib-prompting/.venv/bin:$PATH
+  for M in qwen3.5-9b deepseek-8b; do
+    DATASET=correct-error MODEL=$M MODE=paper GT=with GPU=<g> \
+      bash scripts/errorprobe/run.sh 2>&1 | tee logs/open/errorprobe-correct-error-${M}-gt.log
+  done
+  ```
+
+  2,226 trajectories × 2 models. The qwen3.5-9b config's handicap applies
+  (512 new tokens, temperature 1.0, top-p 0.95, 16k window). deepseek-8b
+  runs at the config's default (8192 new tokens). Runs resume on file
+  existence — rerun after a crash.
+
+- [ ] **8. GPT-4o, correct-error with GT (paper mode).** API only, no GPU:
+
+  ```bash
+  export OPENAI_API_KEY=sk-...
+  DATASET=correct-error MODEL=gpt-4o MODE=paper GT=with bash scripts/errorprobe/run.sh
+  ```
+
+  2,226 trajectories, one hypothesis, handicapped decoding (512 new tokens,
+  temperature 1.0, top-p 0.95). This fills the only `--` in the GPT-4o
+  block of `tab:gt-full`.
+
+  Budget, from the finished runs: the without-GT CE run made 14,778 calls
+  (6.6 per trajectory), and on Who&When the with-GT prompts cost the same as
+  the without-GT ones to within 1% (`reports/cost_ww.tsv`). CE trajectories
+  are as short as WW-AG's (10 turns on average), whose paper-mode run read
+  11.6k prompt tokens and wrote 1.4k output tokens per trajectory, so expect
+  roughly 15k calls, 26M prompt tokens and 3M output tokens. Check the balance
+  first; the run resumes on file existence, so a `429` mid-way loses nothing.
+  Do NOT set `OVERWRITE=1`: `outputs/correct-error/*/gpt-4o/` already holds the
+  other five baselines' with-GT predictions.
+
+- [ ] **9. Evaluate correct-error with GT:**
+
+  ```bash
+  python -m baselines.errorprobe.report --config baselines/errorprobe/configs/report_correct-error.yaml --gt with --check-only
+  python -m baselines.errorprobe.report --config baselines/errorprobe/configs/report_correct-error.yaml --gt with
+  ```
+
+  Every `errorprobe_paper` row that was run must read `DONE`; `errorprobe`
+  and `errorprobe_bt` rows read `MISSING` (the vendored truncated mode was
+  not run with GT). Tables land in `outputs/correct-error/reports/errorprobe/`.
+---

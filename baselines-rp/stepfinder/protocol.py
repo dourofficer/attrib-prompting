@@ -48,7 +48,8 @@ DEFAULT_TRAIN_DATA_ROOT = "vendored/StepFinder/data"
 # `ww/algorithm-generated` and `traceelephant/captain` — both CaptainAgent, both
 # `*_Expert` vocabularies — train on Algorithm-Generated, while
 # `ww/hand-crafted` and `traceelephant/magentic` train on Hand-Crafted.
-# `correct-error` matches neither system and falls back to Hand-Crafted.
+# `correct-error` matches neither system and falls back to Hand-Crafted, and so
+# does `tracertraj` (MetaGPT roles) — its configs run both corpora explicitly.
 DEFAULT_TRAIN_SET = "hand-crafted"
 TRAIN_SET_BY_SUBSET = {
     "algorithm-generated": "algorithm-generated",

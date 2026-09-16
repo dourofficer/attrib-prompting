@@ -44,7 +44,7 @@ from __future__ import annotations
 
 from typing import Generator
 
-from baselines.prompting.methods import parse_all_at_once, strip_think  # noqa: F401 (strip_think re-exported for schemagen)
+from baselines.prompting.methods import agent_vocabulary, parse_all_at_once, strip_think  # noqa: F401 (strip_think re-exported for schemagen)
 
 # The agent identity lives in the "role" field for every dataset in this repo.
 AGENT_KEY = "role"
@@ -291,8 +291,9 @@ def baseline_messages(record: dict, include_gt: bool = False) -> list[dict]:
 Program = Generator[list[list[dict]], list[str], dict]
 
 
-def _finish(raw: str, schema_cases: list[int], num_schemata: int) -> dict:
-    agent, step = parse_all_at_once(raw)
+def _finish(raw: str, schema_cases: list[int], num_schemata: int,
+            agents: list[str] | None = None) -> dict:
+    agent, step = parse_all_at_once(raw, agents)
     return {
         "predicted_agent": agent,
         "predicted_step": step,
@@ -307,13 +308,13 @@ def correct_program(record: dict, *, analyzer, num_schemata: int,
                     include_gt: bool = False) -> Program:
     keys, contents = analyzer.get_similarity_based_schema(int(record["id"]), num_schemata)
     raw = (yield [correct_messages(record, keys, contents, include_gt)])[0]
-    return _finish(raw, keys, num_schemata)
+    return _finish(raw, keys, num_schemata, agent_vocabulary(record["history"]))
 
 
 def correct_baseline_program(record: dict, *, analyzer=None, num_schemata: int = 0,
                              include_gt: bool = False) -> Program:
     raw = (yield [baseline_messages(record, include_gt)])[0]
-    return _finish(raw, [], 0)
+    return _finish(raw, [], 0, agent_vocabulary(record["history"]))
 
 
 METHODS = {

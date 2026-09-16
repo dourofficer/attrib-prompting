@@ -141,6 +141,7 @@ each subset is paired with the corpus built from the same system:
 | `ww/hand-crafted` | Magentic-One | Hand-Crafted | `hc` |
 | `traceelephant/magentic` | Magentic-One | Hand-Crafted | `hc` |
 | `correct-error/*`, `traceelephant/swe` | neither | Hand-Crafted | `hc` |
+| `tracertraj/code` | MetaGPT (neither) | both, as two families | `hc` / `alg` |
 
 The vocabularies confirm the pairing. Of `traceelephant/captain`'s 1,746 steps,
 82.8% carry an agent name that appears in Algorithm-Generated against 57.3% for

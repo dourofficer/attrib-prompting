@@ -5,7 +5,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: MODEL=<name> DATASET=<ww|correct-error|correct-error-nogt|traceelephant> [SUBSET=<subset>] scripts/prompting/${METHOD}.sh" >&2
+  echo "Usage: MODEL=<name> DATASET=<ww|correct-error|correct-error-nogt|traceelephant|tracertraj> [SUBSET=<subset>] scripts/prompting/${METHOD}.sh" >&2
   echo "Optional env: GT=with|without, GPU, START_IDX, END_IDX, DRY_RUN=1, OVERWRITE=1, EXTRA_SET=\"--set k=v ...\"" >&2
   exit 1
 }

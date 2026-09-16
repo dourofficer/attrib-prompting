@@ -276,7 +276,7 @@ def test_ragprep_reports_a_missing_knowledge_base(tmp_path):
 # sweep
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIGS = ["ww-api", "correct-error-api", "traceelephant-api"]
+CONFIGS = ["ww-api", "correct-error-api", "traceelephant-api", "tracertraj-api"]
 
 
 @pytest.mark.parametrize("name", CONFIGS)

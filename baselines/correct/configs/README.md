@@ -8,7 +8,7 @@ needed to add a model.
 | `<ds>-api.yaml` | `sweep.py` / `predict.py` / `schemagen.py` | what to run: models × subsets × methods, the 3-stage pipeline knobs, `model_specs` |
 | `report_<ds>.yaml` | `report.py` | what to score: models, methods, seeds, split ratios |
 
-`<ds>` is `ww`, `correct-error` or `traceelephant`.
+`<ds>` is `ww`, `correct-error`, `traceelephant` or `tracertraj`.
 
 **Only closed-source inference configs are shipped** (`gpt-4o`, `gpt-5` — the
 `-api.yaml` files), because that is what this repo currently runs. Local-model
@@ -139,4 +139,4 @@ is the paper's design — one strong generator, many detectors.
 `report_<ds>.yaml` lists the models and methods that go into the tables; add a
 model name there once its runs finish. `gt: without` selects the `outputs-nogt/`
 tree (the default for this baseline); `gt_in_prompt` labels the with-GT tree
-only. Seeds are 1–20 for ww/traceelephant, 1–3 for correct-error.
+only. Seeds are 1–20 for ww/traceelephant/tracertraj, 1–3 for correct-error.

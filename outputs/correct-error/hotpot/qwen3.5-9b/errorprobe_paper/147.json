@@ -1,0 +1,281 @@
+{
+  "id": "147",
+  "filename": "147.json",
+  "question_id": "gpt-5-nano_hotpot_task167_1",
+  "method": "errorprobe_paper",
+  "mode": "paper",
+  "model": "qwen3.5-9b",
+  "backend": "vllm",
+  "gt_in_prompt": true,
+  "predicted_agent": "Planner",
+  "predicted_step": 5,
+  "gold_agent": "Planner",
+  "gold_step": 5,
+  "raw": "{\n  \"agent\": \"Planner\",\n  \"step\": 5,\n  \"mode\": \"incorrect_verification\",\n  \"confidence\": 1.0,\n  \"reason\": \"The Planner correctly extracted the city 'Wichita' from the WebSurfer outputs in Step 4 but failed during verification in Step 5 by substituting the county name 'Sedgwick' for the requested city. This was a hallucination of the location type (confusing county with city) that directly contradicted the explicit address data ('Wichita, KS') available in the same step, leading to the incorrect final answer.\",\n  \"chosen_hypothesis\": 0,\n  \"novel_and_robust\": true,\n  \"signature\": {\n    \"mast_mode\": \"incorrect_verification\",\n    \"tool\": \"logic_probe\",\n    \"args\": [\"location_extraction\", \"entity_resolution\"],\n    \"context\": [\"Planner\", \"Information Retrieval\"]\n  },\n  \"guard\": \"When verifying location-based answers, the agent must strictly ensure the extracted entity name (e.g., city vs. county) matches the specific grammatical slot requested in the question.\"\n}",
+  "calls": [
+    {
+      "role": "tagger",
+      "chunk": 0,
+      "steps": [
+        0,
+        5
+      ],
+      "parsed": true,
+      "response": "{\n  \"tags\": [\n    {\"step\": 5, \"mode\": \"incorrect_verification\", \"evidence\": \"The planner states 'Web results show... Kapaun Mt. Carmel Catholic High School is in Wichita, KS' in the analysis but concludes the final answer is 'Sedgwick, Kansas' without noting this contradiction.\", \"severity\": 1.0},\n    {\"step\": 5, \"mode\": \"reasoning_action_mismatch\", \"evidence\": \"The agent's analysis correctly identifies Wichita as the city for both schools based on the addresses provided, yet the final decision output incorrectly claims the schools are in Sedgwick, Kansas.\", \"severity\": 1.0}\n  ],\n  \"summary\": \"The planner failed to verify the final output against its own search results, leading to a mismatch between the correct reasoning (Wichita) and the incorrect final answer (Sedgwick).\"\n}"
+    },
+    {
+      "role": "dependency",
+      "chunk": 0,
+      "steps": [
+        0,
+        5
+      ],
+      "parsed": true,
+      "response": "{\n  \"edges\": [\n    {\"from\": 0, \"to\": 1, \"kind\": \"responds_to\", \"why\": \"Step 1 analyzes the task defined in Step 0 and decides the next action based on it.\"},\n    {\"from\": 1, \"to\": 2, \"kind\": \"instructs\", \"why\": \"Step 1 provides specific instructions to the WebSurfer (Step 2) to perform searches for the first school.\"},\n    {\"from\": 2, \"to\": 3, \"kind\": \"verifies\", \"why\": \"Step 3 analyzes and verifies the location data found by the WebSurfer in Step 2.\"},\n    {\"from\": 3, \"to\": 4, \"kind\": \"instructs\", \"why\": \"Step 3 provides specific instructions to the WebSurfer (Step 4) to perform searches for the second school.\"},\n    {\"from\": 4, \"to\": 5, \"kind\": \"verifies\", \"why\": \"Step 5 analyzes and verifies the location data found by the WebSurfer in Step 4 to combine with Step 2 data.\"}\n  ]\n}"
+    },
+    {
+      "role": "strategist",
+      "parsed": true,
+      "response": "{\n  \"hypotheses\": [\n    {\n      \"step\": 5,\n      \"agent\": \"Planner\",\n      \"mode\": \"incorrect_verification\",\n      \"rationale\": \"The Planner correctly extracts the city 'Wichita' from the WebSurfer outputs in Step 4 but incorrectly verifies this by stating the schools are in 'Sedgwick, Kansas'. Since Wichita is a city and Sedgwick is the county, the Planner failed to verify its own conclusion against the extracted data, leading to a factual error.\",\n      \"tool\": \"logic_probe\",\n      \"check\": \"Verify if the agent correctly maps the extracted city 'Wichita' from Step 4 to the final answer, or if it hallucinates 'Sedgwick' as the city name.\",\n      \"related_steps\": [4, 5]\n    }\n  ]\n}"
+    },
+    {
+      "role": "investigator",
+      "hypothesis": 0,
+      "tool": "logic_probe",
+      "parsed": true,
+      "response": "{\n  \"tool\": \"logic_probe\",\n  \"preconditions\": [\n    {\n      \"condition\": \"Web results confirm Bishop Carroll Catholic High School is in Wichita, KS.\",\n      \"source_steps\": [4, 5],\n      \"holds\": true,\n      \"evidence\": \"Step 4 shows a search for 'Kapaun Mt. Carmel Catholic High School location' returning kapaun.org (Wichita). Step 5 asserts 'Web results show Bishop Carroll Catholic High School is in Wichita, KS'.\"\n    },\n    {\n      \"condition\": \"Web results confirm Kapaun Mt. Carmel Catholic High School is in Wichita, KS.\",\n      \"source_steps\": [4, 5],\n      \"holds\": true,\n      \"evidence\": \"Step 4 shows search results for Kapaun. Step 5 asserts 'Web results show Kapaun Mt. Carmel Catholic High School is in Wichita, KS (address: 8506 E. Central Wichita, KS 67206)'.\"\n    }\n  ],\n  \"postconditions\": [\n    {\n      \"condition\": \"Both schools are located in Sedgwick, Kansas (the city).\",\n      \"used_by_steps\": [5],\n      \"holds\": false,\n      \"evidence\": \"Step 5 states: 'Both Bishop Carroll and Kapaun Mt. Carmel Catholic High School are located in Sedgwick, Kansas.' However, the same step explicitly lists addresses ending in 'Wichita, KS', and Wichita is the city, not the county (Sedgwick).\"\n    }\n  ],\n  \"discrepancy\": \"The step relies on valid web evidence showing the city is 'Wichita', but claims the location is 'Sedgwick'. While the schools are indeed in Sedgwick County, the question asks for the city. The step incorrectly substitutes the county name for the city name in its final assertion, contradicting the explicit address data ('Wichita, KS') provided within the same step.\",\n  \"supports_hypothesis\": true,\n  \"conclusive\": true,\n  \"confidence\": 1.0\n}"
+    },
+    {
+      "role": "arbiter",
+      "parsed": true,
+      "response": "{\n  \"agent\": \"Planner\",\n  \"step\": 5,\n  \"mode\": \"incorrect_verification\",\n  \"confidence\": 1.0,\n  \"reason\": \"The Planner correctly extracted the city 'Wichita' from the WebSurfer outputs in Step 4 but failed during verification in Step 5 by substituting the county name 'Sedgwick' for the requested city. This was a hallucination of the location type (confusing county with city) that directly contradicted the explicit address data ('Wichita, KS') available in the same step, leading to the incorrect final answer.\",\n  \"chosen_hypothesis\": 0,\n  \"novel_and_robust\": true,\n  \"signature\": {\n    \"mast_mode\": \"incorrect_verification\",\n    \"tool\": \"logic_probe\",\n    \"args\": [\"location_extraction\", \"entity_resolution\"],\n    \"context\": [\"Planner\", \"Information Retrieval\"]\n  },\n  \"guard\": \"When verifying location-based answers, the agent must strictly ensure the extracted entity name (e.g., city vs. county) matches the specific grammatical slot requested in the question.\"\n}"
+    }
+  ],
+  "error_family": "incorrect_verification",
+  "error_reason": "The Planner correctly extracted the city 'Wichita' from the WebSurfer outputs in Step 4 but failed during verification in Step 5 by substituting the county name 'Sedgwick' for the requested city. This was a hallucination of the location type (confusing county with city) that directly contradicted the explicit address data ('Wichita, KS') available in the same step, leading to the incorrect final answer.",
+  "confidence": 1.0,
+  "hypotheses": [
+    {
+      "step": 5,
+      "agent": "Planner",
+      "agent_fixed": false,
+      "mode": "incorrect_verification",
+      "rationale": "The Planner correctly extracts the city 'Wichita' from the WebSurfer outputs in Step 4 but incorrectly verifies this by stating the schools are in 'Sedgwick, Kansas'. Since Wichita is a city and Sedgwick is the county, the Planner failed to verify its own conclusion against the extracted data, leading to a factual error.",
+      "tool": "logic_probe",
+      "check": "Verify if the agent correctly maps the extracted city 'Wichita' from Step 4 to the final answer, or if it hallucinates 'Sedgwick' as the city name.",
+      "related_steps": [
+        4
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "tool": "logic_probe",
+      "supports_hypothesis": true,
+      "conclusive": true,
+      "confidence": 1.0,
+      "discrepancy": "The step relies on valid web evidence showing the city is 'Wichita', but claims the location is 'Sedgwick'. While the schools are indeed in Sedgwick County, the question asks for the city. The step incorrectly substitutes the county name for the city name in its final assertion, contradicting the explicit address data ('Wichita, KS') provided within the same step.",
+      "parse_error": false,
+      "preconditions": [
+        {
+          "condition": "Web results confirm Bishop Carroll Catholic High School is in Wichita, KS.",
+          "source_steps": [
+            4,
+            5
+          ],
+          "holds": true,
+          "evidence": "Step 4 shows a search for 'Kapaun Mt. Carmel Catholic High School location' returning kapaun.org (Wichita). Step 5 asserts 'Web results show Bishop Carroll Catholic High School is in Wichita, KS'."
+        },
+        {
+          "condition": "Web results confirm Kapaun Mt. Carmel Catholic High School is in Wichita, KS.",
+          "source_steps": [
+            4,
+            5
+          ],
+          "holds": true,
+          "evidence": "Step 4 shows search results for Kapaun. Step 5 asserts 'Web results show Kapaun Mt. Carmel Catholic High School is in Wichita, KS (address: 8506 E. Central Wichita, KS 67206)'."
+        }
+      ],
+      "postconditions": [
+        {
+          "condition": "Both schools are located in Sedgwick, Kansas (the city).",
+          "used_by_steps": [
+            5
+          ],
+          "holds": false,
+          "evidence": "Step 5 states: 'Both Bishop Carroll and Kapaun Mt. Carmel Catholic High School are located in Sedgwick, Kansas.' However, the same step explicitly lists addresses ending in 'Wichita, KS', and Wichita is the city, not the county (Sedgwick)."
+        }
+      ]
+    }
+  ],
+  "verdict": {
+    "agent": "Planner",
+    "agent_fixed": false,
+    "step": 5,
+    "mode": "incorrect_verification",
+    "confidence": 1.0,
+    "reason": "The Planner correctly extracted the city 'Wichita' from the WebSurfer outputs in Step 4 but failed during verification in Step 5 by substituting the county name 'Sedgwick' for the requested city. This was a hallucination of the location type (confusing county with city) that directly contradicted the explicit address data ('Wichita, KS') available in the same step, leading to the incorrect final answer.",
+    "chosen_hypothesis": 0,
+    "novel_and_robust": true,
+    "signature": {
+      "tool": "logic_probe",
+      "api": "default",
+      "arg_schema": [
+        "location_extraction",
+        "entity_resolution"
+      ],
+      "context_slots": [
+        "Planner",
+        "Information Retrieval"
+      ],
+      "err_family": "incorrect_verification"
+    },
+    "guard": "When verifying location-based answers, the agent must strictly ensure the extracted entity name (e.g., city vs. county) matches the specific grammatical slot requested in the question."
+  },
+  "arbiter_saw_only_inconclusive": false,
+  "memory_candidate": {
+    "eligible": true,
+    "verified": true,
+    "confidence": 1.0,
+    "novel_and_robust": true,
+    "signature": {
+      "tool": "logic_probe",
+      "api": "default",
+      "arg_schema": [
+        "location_extraction",
+        "entity_resolution"
+      ],
+      "context_slots": [
+        "Planner",
+        "Information Retrieval"
+      ],
+      "err_family": "incorrect_verification"
+    },
+    "guard": "When verifying location-based answers, the agent must strictly ensure the extracted entity name (e.g., city vs. county) matches the specific grammatical slot requested in the question.",
+    "tau": 0.7
+  },
+  "failure_stage": null,
+  "structure": [
+    {
+      "step": 0,
+      "agent": "Unknown",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 1,
+      "agent": "Planner",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 2,
+      "agent": "WebSurfer",
+      "action": "execution_output",
+      "addressee": null
+    },
+    {
+      "step": 3,
+      "agent": "Planner",
+      "action": "message",
+      "addressee": null
+    },
+    {
+      "step": 4,
+      "agent": "WebSurfer",
+      "action": "execution_output",
+      "addressee": null
+    },
+    {
+      "step": 5,
+      "agent": "Planner",
+      "action": "final_answer",
+      "addressee": null
+    }
+  ],
+  "tags": [
+    {
+      "step": 5,
+      "mode": "incorrect_verification",
+      "evidence": "The planner states 'Web results show... Kapaun Mt. Carmel Catholic High School is in Wichita, KS' in the analysis but concludes the final answer is 'Sedgwick, Kansas' without noting this contradiction.",
+      "severity": 1.0,
+      "chunk": 0
+    },
+    {
+      "step": 5,
+      "mode": "reasoning_action_mismatch",
+      "evidence": "The agent's analysis correctly identifies Wichita as the city for both schools based on the addresses provided, yet the final decision output incorrectly claims the schools are in Sedgwick, Kansas.",
+      "severity": 1.0,
+      "chunk": 0
+    }
+  ],
+  "graph": {
+    "edges": [
+      {
+        "from": 0,
+        "to": 1,
+        "kind": "responds_to",
+        "source": "llm",
+        "why": "Step 1 analyzes the task defined in Step 0 and decides the next action based on it."
+      },
+      {
+        "from": 1,
+        "to": 2,
+        "kind": "instructs",
+        "source": "llm",
+        "why": "Step 1 provides specific instructions to the WebSurfer (Step 2) to perform searches for the first school."
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "kind": "verifies",
+        "source": "llm",
+        "why": "Step 3 analyzes and verifies the location data found by the WebSurfer in Step 2."
+      },
+      {
+        "from": 3,
+        "to": 4,
+        "kind": "instructs",
+        "source": "llm",
+        "why": "Step 3 provides specific instructions to the WebSurfer (Step 4) to perform searches for the second school."
+      },
+      {
+        "from": 4,
+        "to": 5,
+        "kind": "verifies",
+        "source": "llm",
+        "why": "Step 5 analyzes and verifies the location data found by the WebSurfer in Step 4 to combine with Step 2 data."
+      }
+    ],
+    "n_steps": 6
+  },
+  "erf": {
+    "steps": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "depth": {
+      "0": 5,
+      "1": 4,
+      "2": 3,
+      "3": 2,
+      "4": 1,
+      "5": 0
+    },
+    "floor_applied": false,
+    "masked": [],
+    "chars": 6319,
+    "step_chars": 1500
+  },
+  "paper_params": {
+    "max_hypotheses": 1,
+    "chunk_chars": 12000,
+    "condensed_chars": 10000,
+    "include_mast_examples": false,
+    "sequential_edges": "fallback"
+  }
+}

@@ -1,0 +1,57 @@
+# ErrorProbe inference config — TracerTraj, closed-source API models.
+# Requires the model's API key in the environment (default: OPENAI_API_KEY).
+models:  [gpt-4o, gpt-5]
+subsets: [code]
+
+data_dir:     data/tracertraj
+outputs_root: outputs/tracertraj
+
+# Vendored setting: no task answer in the prompts (outputs-nogt/ tree).
+gt: without
+
+# Both vendored paths: truncated (2 calls) and the full backward walk. Two
+# method properties worth knowing on this corpus: the backward walk examines
+# at most 100 turns (backward.py MAX_TURNS_TO_EXAMINE), so code/35 (125
+# turns, gold step 5) and code/106 (151 turns, gold step 4) are out of its
+# reach; and the truncated mode reads only the last 15 turns, while the gold
+# step sits at a median relative position of 0.40.
+modes: [truncated, backward]
+
+# The paper's own pipeline (MAST tagger -> dependency graph -> Strategist /
+# Investigator / Arbiter; built from the paper, no vendored counterpart) is
+# opt-in: MODE=paper bash scripts/errorprobe/run.sh. Its knobs, read only when
+# `paper` is among the modes:
+paper:
+  max_hypotheses: 3          # Investigator calls per trajectory
+  chunk_chars: 12000         # tagger / dependency chunk size (rendered chars)
+  condensed_chars: 20000     # budget for the condensed trace the team reads
+  include_mast_examples: false   # the MAST authors' worked examples, ~17k tokens per tagger prompt
+  sequential_edges: fallback     # 'always' disables masking (ablation)
+
+start_idx: 0
+end_idx:   null
+
+model_specs:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    # Decoded on the same handicap as the local qwen3.5-9b spec (user
+    # decision, 2026-09-07): a short answer budget at temperature 1.0 with a
+    # 0.95 nucleus. The paper mode also runs one hypothesis on a 10k
+    # condensed trace; chunks keep the top-level size.
+    params: {max_tokens: 512, temperature: 1.0, top_p: 0.95}
+    paper:
+      max_hypotheses: 1
+      condensed_chars: 10000
+  gpt-5:
+    backend: openai
+    model: gpt-5
+    # No temperature: reasoning models reject a non-default one, so the
+    # handicap is the reasoning budget instead: the lowest effort GPT-5
+    # accepts. The cap stays well above the answer length because reasoning
+    # tokens are drawn from it; an exhausted cap returns empty content, which
+    # parses to the vendored failure sentinel rather than an error.
+    params: {max_completion_tokens: 4096, reasoning_effort: minimal}
+    paper:
+      max_hypotheses: 1
+      condensed_chars: 10000

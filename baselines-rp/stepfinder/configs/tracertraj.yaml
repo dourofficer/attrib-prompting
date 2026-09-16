@@ -1,0 +1,75 @@
+# StepFinder on tracertraj, hand-crafted arm. TracerTraj comes from a
+# MetaGPT-style software company (Team Leader, Product Manager, Architect,
+# Engineer, Data Analyst) — an agent system that matches NEITHER vendored
+# training corpus, so the provenance rule that pairs ww and traceelephant
+# subsets with a corpus (see ../README.md) gives no answer here. Both arms
+# therefore run as separate method families and the numbers decide which one
+# is reported (user decision, 2026-09-07):
+#   tracertraj.yaml      -> hand-crafted corpus, hc preset, stepfinder.s<seed>
+#   tracertraj-alg.yaml  -> algorithm-generated corpus, alg preset, stepfinder-alg.s<seed>
+# Vocabulary check: none of the five tracertraj agent names appears in either
+# corpus's agent vocabulary, so every step's agent embedding is out-of-domain
+# under both arms. The task-overlap flag is 0 for both (coding tasks, not GAIA).
+models:  [qwen3-embedding-0.6b, qwen3.5-9b, deepseek-8b, qwen3.5-4b, qwen3-14b, qwen3.5-27b]
+subsets: [code]
+data_dir: data/tracertraj
+outputs_root: outputs-rb-gt/tracertraj
+gt: without
+
+default_train_set: hand-crafted
+default_preset: hc
+
+eval_seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+splits: {train: 0.3, val: 0.2, test: 0.5}
+
+# Training. Family A ("regen") learns from the regenerated failures that ship
+# with the paper's code; its checkpoints are shared across datasets, so this
+# config needs only STAGES=feats-test,score. Family B ("in-corpus") would
+# train on the 30% partition — 38 trajectories here, whose holdout falls
+# under val_min_size, so it trains the full min_train_steps budget.
+protocols: [regen]
+train_data_root: vendored/StepFinder/data
+
+# Five training seeds, each its own method directory (stepfinder.s42 … s46).
+seeds: [42, 43, 44, 45, 46]
+
+# Checkpoints are picked on data held out of *training*. The vendored rule
+# picks on the corpus being scored; `model_selection: vendored` reproduces it
+# for a parity check and refuses to write predictions.
+model_selection: val
+val_frac: 0.1
+val_min_tasks: 4     # distinct questions
+val_min_size: 20     # trajectories
+
+# The agent embedding is a text embedding of the agent's name; normalizing
+# keeps the repo's role strings on the training corpus's vocabulary.
+agent_normalize: standardize
+
+epochs: 50
+min_train_steps: 5000
+batch_size: 16
+patience: 10
+top_k: 3
+
+model_specs:
+  qwen3-embedding-0.6b:
+    model_path: ../hub/Qwen/Qwen3-Embedding-0.6B
+    dtype: fp16
+  qwen3.5-9b:
+    model_path: ../hub/Qwen/Qwen3.5-9B
+    dtype: fp16
+  # The manuscript's scale study (4B -> 9B -> 14B -> 27B). Qwen3.5 ships no dense 14B,
+  # so the 14B point is Qwen3-14B, the previous generation of the same family.
+  qwen3.5-4b:
+    model_path: ../hub/Qwen/Qwen3.5-4B
+    dtype: fp16
+  qwen3-14b:
+    model_path: ../hub/Qwen/Qwen3-14B
+    dtype: fp16
+  qwen3.5-27b:
+    model_path: ../hub/Qwen/Qwen3.5-27B
+    dtype: fp16
+  deepseek-8b:
+    model_path: ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    tokenizer: baselines/prompting/tokenizers/deepseek-8b
+    dtype: fp16

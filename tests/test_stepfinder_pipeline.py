@@ -683,6 +683,7 @@ def test_train_task_overlap_reproduces_the_measured_leakage():
         "data/traceelephant/magentic": 51,
         "data/traceelephant/swe": 0,
         "data/correct-error/gaia": 30,
+        "data/tracertraj/code": 0,
     }
     sets = {name: _regen_set(name) for name in ("hand-crafted", "algorithm-generated")}
     for rel, expected in counts.items():
@@ -978,7 +979,7 @@ def test_shipped_configs_parse_and_agree_with_the_corpus():
     yaml = pytest.importorskip("yaml")
     cfg_dir = REPO_ROOT / "baselines-rp/stepfinder/configs"
 
-    for name in ("ww", "correct-error", "traceelephant"):
+    for name in ("ww", "correct-error", "traceelephant", "tracertraj"):
         cfg = yaml.safe_load((cfg_dir / f"{name}.yaml").read_text())
         assert cfg["gt"] == "without"
         assert cfg["outputs_root"] == f"outputs-rb-gt/{name}"
@@ -1240,7 +1241,7 @@ def test_a_holdout_too_small_to_measure_falls_back_to_the_full_budget(tmp_path, 
 
 def test_default_holdout_floor_is_stated_in_the_shipped_configs():
     yaml = pytest.importorskip("yaml")
-    for name in ("ww", "correct-error", "traceelephant"):
+    for name in ("ww", "correct-error", "traceelephant", "tracertraj", "tracertraj-alg"):
         cfg = yaml.safe_load(
             (REPO_ROOT / "baselines-rp/stepfinder/configs" / f"{name}.yaml").read_text())
         assert cfg["val_min_size"] == 20
@@ -1275,13 +1276,43 @@ def test_min_train_steps_scales_epochs_for_a_small_partition(tmp_path, mini_corp
 
 def test_shipped_configs_set_the_optimizer_step_floor():
     yaml = pytest.importorskip("yaml")
-    for name in ("ww", "correct-error", "traceelephant"):
+    for name in ("ww", "correct-error", "traceelephant", "tracertraj", "tracertraj-alg"):
         cfg = yaml.safe_load(
             (REPO_ROOT / "baselines-rp/stepfinder/configs" / f"{name}.yaml").read_text())
         assert cfg["min_train_steps"] == 5000
         # family A must be unaffected: 2604 trajectories at batch 16 for 50
         # epochs is already well past the floor
         assert -(-2604 // cfg["batch_size"]) * cfg["epochs"] > cfg["min_train_steps"]
+
+
+def test_tracertraj_runs_both_training_corpora_as_separate_families():
+    """tracertraj's MetaGPT agents match neither vendored corpus, so the two
+    arms ship as two configs that differ only in corpus, preset and method-dir
+    prefix, and the second arm's dry run names its own family."""
+    yaml = pytest.importorskip("yaml")
+    cfg_dir = REPO_ROOT / "baselines-rp/stepfinder/configs"
+    hc = yaml.safe_load((cfg_dir / "tracertraj.yaml").read_text())
+    alg = yaml.safe_load((cfg_dir / "tracertraj-alg.yaml").read_text())
+    assert (hc["default_train_set"], hc["default_preset"]) == ("hand-crafted", "hc")
+    assert (alg["default_train_set"], alg["default_preset"]) == ("algorithm-generated", "alg")
+    assert alg["method_dir_prefix"] == "stepfinder-alg" and "method_dir_prefix" not in hc
+    differing = {k for k in set(hc) | set(alg) if hc.get(k) != alg.get(k)}
+    assert differing == {"default_train_set", "default_preset", "method_dir_prefix"}
+    assert alg["outputs_root"] == hc["outputs_root"]      # side by side, same tree
+
+    report = yaml.safe_load((cfg_dir / "report_tracertraj_alg.yaml").read_text())
+    assert report["methods"] == [f"stepfinder-alg.s{s}" for s in alg["seeds"]]
+    assert report["out_root"].endswith("/reports/stepfinder-alg")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "stepfinder.sweep",
+         "--config", str(cfg_dir / "tracertraj-alg.yaml"), "--dry-run"],
+        cwd=REPO_ROOT, env=_rb_env(), capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--method-dir-prefix stepfinder-alg" in result.stdout
+    assert "--train-set algorithm-generated" in result.stdout
+    assert "outputs-rb-nogt/tracertraj/code/" in result.stdout
 
 
 # ---------------------------------------------------------------------------

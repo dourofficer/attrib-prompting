@@ -39,7 +39,7 @@ Two kinds of file per dataset, and they answer different questions.
   directory so the spread across training runs is visible in the report rather
   than averaged away. They have nothing to do with the evaluation splits.
 - **`eval_seeds`** are the *split* seeds the evaluation protocol already uses
-  (1–20 for `ww` and `traceelephant`, 1–3 for `correct-error`). Family B trains
+  (1–20 for `ww`, `traceelephant` and `tracertraj`, 1–3 for `correct-error`). Family B trains
   one model per split seed, on that seed's training partition, and scores only
   that seed's val and test ids.
 
@@ -76,6 +76,13 @@ preset_overrides:    {captain: alg}
 ```
 
 `protocol.py:48-54` holds the same mapping for runs that pass no config.
+
+`tracertraj` (MetaGPT: Team Leader, Product Manager, Architect, Engineer) matches
+neither corpus — 0% of its steps carry a name from either vocabulary — so it
+runs both as separate families instead of picking one: `tracertraj.yaml` is the
+hand-crafted arm (`stepfinder.s*`), `tracertraj-alg.yaml` the algorithm-generated
+arm (`stepfinder-alg.s*`, via `method_dir_prefix`). Which arm the tables report
+is decided from the numbers.
 
 Changing this changes what leaks. Under the default, `ww` has zero task overlap
 with its training corpus; pair `ww/algorithm-generated` with Hand-Crafted

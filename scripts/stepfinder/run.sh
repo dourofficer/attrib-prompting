@@ -13,7 +13,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: DATASET=<ww|correct-error|traceelephant> [MODEL=<encoder>] [SUBSET=<subset>] bash scripts/stepfinder/run.sh" >&2
+  echo "Usage: DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<encoder>] [SUBSET=<subset>] bash scripts/stepfinder/run.sh" >&2
   echo "Optional env: GT=with|without (default: config — without, the vendored setting)," >&2
   echo "  PROTOCOL=regen|in-corpus (comma-separated), MODEL_SELECTION=val|test|vendored," >&2
   echo "  REDUCE=slice|pca (how the wide embedding becomes the 128/32 input)," >&2

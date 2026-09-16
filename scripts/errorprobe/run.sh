@@ -11,7 +11,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/errorprobe/run.sh" >&2
+  echo "Usage: DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<name>] [SUBSET=<subset>] bash scripts/errorprobe/run.sh" >&2
   echo "Optional env: MODE=truncated|backward|paper (default: config — the two vendored modes)," >&2
   echo "  GT=with|without (default: config — without, the vendored setting)," >&2
   echo "  GPU, START_IDX, END_IDX, DRY_RUN=1, OVERWRITE=1," >&2

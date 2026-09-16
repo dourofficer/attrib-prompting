@@ -696,7 +696,7 @@ def test_shipped_configs_parse_and_agree_with_the_corpus():
     import yaml
 
     cfg_dir = REPO_ROOT / "baselines-rp" / "oat" / "configs"
-    for name in ("ww", "correct-error", "traceelephant"):
+    for name in ("ww", "correct-error", "traceelephant", "tracertraj"):
         cfg = yaml.safe_load((cfg_dir / f"{name}.yaml").read_text())
         assert cfg["gt"] == "without"
         assert cfg["outputs_root"] == f"outputs-rb-gt/{name}"

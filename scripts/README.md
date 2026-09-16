@@ -15,7 +15,7 @@ baseline: it reads a model's hidden states instead of prompting it, it lives in
 ## prompting/
 
 ```bash
-MODEL=<name> DATASET=<ww|correct-error|correct-error-nogt|traceelephant> \
+MODEL=<name> DATASET=<ww|correct-error|correct-error-nogt|traceelephant|tracertraj> \
   [SUBSET=<subset>] [GT=with|without] bash scripts/prompting/<method>.sh
 ```
 
@@ -40,7 +40,7 @@ MODEL=gpt-4o DATASET=ww SUBSET=hand-crafted END_IDX=10 DRY_RUN=1 bash scripts/pr
 | var | meaning |
 |---|---|
 | `MODEL` (required) | model name — must be declared in the dataset's config `model_specs` |
-| `DATASET` (required) | `ww`, `correct-error`, `correct-error-nogt`, or `traceelephant` |
+| `DATASET` (required) | `ww`, `correct-error`, `correct-error-nogt`, `traceelephant`, or `tracertraj` |
 | `SUBSET` | one subset; omit to run all subsets of the dataset |
 | `GT` | `with` (default) or `without` — drops the answer line from prompts and writes to `outputs-nogt/` |
 | `GPU` | sets `CUDA_VISIBLE_DEVICES` (local vLLM models) |
@@ -65,7 +65,7 @@ schema-guided detection; see
 [`baselines/correct/README.md`](../baselines/correct/README.md)):
 
 ```bash
-DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/correct/run.sh
+DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<name>] [SUBSET=<subset>] bash scripts/correct/run.sh
 ```
 
 Examples:
@@ -110,7 +110,7 @@ causal-graph detection; see
 [`baselines/chief/README.md`](../baselines/chief/README.md)):
 
 ```bash
-DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/chief/run.sh
+DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<name>] [SUBSET=<subset>] bash scripts/chief/run.sh
 ```
 
 Examples:
@@ -155,7 +155,7 @@ One front door for the RAFFLES Judge-Evaluator loop (see
 [`baselines/raffles/README.md`](../baselines/raffles/README.md)):
 
 ```bash
-DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/raffles/run.sh
+DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<name>] [SUBSET=<subset>] bash scripts/raffles/run.sh
 ```
 
 Examples:
@@ -196,7 +196,7 @@ One front door for the ErrorProbe Analyzer→Verifier diagnosis (see
 [`baselines/errorprobe/README.md`](../baselines/errorprobe/README.md)):
 
 ```bash
-DATASET=<ww|correct-error|traceelephant> [MODEL=<name>] [SUBSET=<subset>] bash scripts/errorprobe/run.sh
+DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<name>] [SUBSET=<subset>] bash scripts/errorprobe/run.sh
 ```
 
 Examples:
@@ -245,7 +245,7 @@ states, train a neural CDE on successful trajectories, score the failures (see
 [`baselines-rp/oat/README.md`](../baselines-rp/oat/README.md)):
 
 ```bash
-DATASET=<ww|correct-error|traceelephant> [MODEL=<extractor>] [SUBSET=<subset>] bash scripts/oat/run.sh
+DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<extractor>] [SUBSET=<subset>] bash scripts/oat/run.sh
 ```
 
 Examples:
@@ -292,7 +292,7 @@ scorer on labelled failures, score the corpus (see
 [`baselines-rp/stepfinder/README.md`](../baselines-rp/stepfinder/README.md)).
 
 ```
-DATASET=<ww|correct-error|traceelephant> [MODEL=<encoder>] [SUBSET=<subset>] bash scripts/stepfinder/run.sh
+DATASET=<ww|correct-error|traceelephant|tracertraj> [MODEL=<encoder>] [SUBSET=<subset>] bash scripts/stepfinder/run.sh
 ```
 
 ```bash
@@ -301,6 +301,10 @@ DATASET=ww SUBSET=hand-crafted MODEL=qwen3-embedding-0.6b GPU=0 bash scripts/ste
 DATASET=ww MODEL=qwen3-embedding-0.6b STAGES=feats-train,train bash scripts/stepfinder/run.sh
 DATASET=ww MODEL=qwen3-embedding-0.6b PROTOCOL=in-corpus GPU=1 bash scripts/stepfinder/run.sh
 DATASET=ww DRY_RUN=1 bash scripts/stepfinder/run.sh                                # preview
+# tracertraj runs both training corpora as separate families (stepfinder.s* = hand-crafted,
+# stepfinder-alg.s* = algorithm-generated); the second reuses the first's feature cache:
+DATASET=tracertraj     MODEL=qwen3-embedding-0.6b GPU=0 STAGES=feats-test,score bash scripts/stepfinder/run.sh
+DATASET=tracertraj-alg MODEL=qwen3-embedding-0.6b GPU=0 STAGES=score            bash scripts/stepfinder/run.sh
 ```
 
 ### Environment knobs

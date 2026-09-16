@@ -131,7 +131,7 @@ def canonical_seeds(cfg: dict) -> list[int]:
     seeds = cfg.get("seeds")
     if not seeds:
         raise SystemExit("report config must set `seeds` explicitly "
-                         "(ww/traceelephant: 1..20, correct-error: 1..3)")
+                         "(ww/traceelephant/tracertraj: 1..20, correct-error: 1..3)")
     return list(dict.fromkeys(seeds))  # dedupe, keep order
 
 

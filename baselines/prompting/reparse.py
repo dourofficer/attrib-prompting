@@ -23,21 +23,38 @@ import argparse
 import json
 from pathlib import Path
 
-from .methods import parse_all_at_once
+from .methods import agent_vocabulary, parse_all_at_once
 
 DEFAULT_PRED_ROOTS = [
     "outputs/ww",
     "outputs/correct-error",
     "outputs/traceelephant",
+    "outputs/tracertraj",
     # without-GT mirrors (missing roots are simply skipped)
     "outputs-nogt/ww",
     "outputs-nogt/correct-error",
     "outputs-nogt/traceelephant",
+    "outputs-nogt/tracertraj",
 ]
 
 
-def reparse_dir(method_dir: Path, dry_run: bool) -> tuple[int, int, int, int]:
+def corpus_vocabulary(method_dir: Path) -> dict[str, list[str]]:
+    """Per-trajectory agent names for the corpus an output dir was scored on.
+
+    ``outputs*/<ds>/<subset>/<model>/<method>`` maps to ``data/<ds>/<subset>``;
+    an absent corpus yields an empty map, and the vendored rule then applies.
+    """
+    from .predict import load_records
+    data_dir = Path("data") / method_dir.parents[2].name / method_dir.parents[1].name
+    if not data_dir.is_dir():
+        return {}
+    return {r["id"]: agent_vocabulary(r["history"]) for r in load_records(str(data_dir))}
+
+
+def reparse_dir(method_dir: Path, dry_run: bool,
+                vocab: dict[str, list[str]] | None = None) -> tuple[int, int, int, int]:
     """Return (n, changed, recovered, still_null) for one all_at_once dir."""
+    vocab = vocab or {}
     n = changed = recovered = still_null = 0
     for path in sorted(method_dir.glob("*.json"), key=lambda p: (len(p.stem), p.stem)):
         if not path.stem.isdigit():
@@ -45,7 +62,7 @@ def reparse_dir(method_dir: Path, dry_run: bool) -> tuple[int, int, int, int]:
         doc = json.loads(path.read_text(encoding="utf-8"))
         n += 1
         old = (doc.get("predicted_agent"), doc.get("predicted_step"))
-        new_agent, new_step = parse_all_at_once(doc.get("raw") or "")
+        new_agent, new_step = parse_all_at_once(doc.get("raw") or "", vocab.get(path.stem))
         if (new_agent, new_step) != old:
             changed += 1
             if old[1] is None and new_step is not None:
@@ -64,8 +81,11 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="baselines.prompting.reparse", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--pred-root", dest="pred_roots", action="append", default=None,
-                   metavar="DIR", help="dataset output root(s); default: all three datasets")
+                   metavar="DIR", help="dataset output root(s); default: every dataset root")
     p.add_argument("--dry-run", action="store_true", help="report counts without writing")
+    p.add_argument("--vocab", default="auto", choices=("auto", "off"),
+                   help="auto: resolve agent names against the corpus under data/ "
+                        "(multi-word names parse); off: the vendored regex alone")
     args = p.parse_args()
 
     pred_roots = args.pred_roots or DEFAULT_PRED_ROOTS
@@ -83,7 +103,8 @@ def main() -> None:
     print(f"{'dataset:subset/model':44} {'n':>5} {'changed':>8} {'recovered':>10} {'still_null':>11}")
     tot = [0, 0, 0, 0]
     for d in dirs:
-        n, changed, recovered, still_null = reparse_dir(d, args.dry_run)
+        vocab = corpus_vocabulary(d) if args.vocab == "auto" else None
+        n, changed, recovered, still_null = reparse_dir(d, args.dry_run, vocab)
         label = f"{d.parents[2].name}:{d.parents[1].name}/{d.parents[0].name}"
         print(f"{label:44} {n:>5} {changed:>8} {recovered:>10} {still_null:>11}")
         for i, v in enumerate((n, changed, recovered, still_null)):

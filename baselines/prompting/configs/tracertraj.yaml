@@ -1,0 +1,38 @@
+# Inference config — TracerTraj, local vLLM models.
+# Closed-source API models have their own config: tracertraj-api.yaml.
+models:  [qwen3.5-9b, deepseek-8b]
+subsets: [code]
+methods: [all_at_once, step_by_step, binary_search]
+
+data_dir:     data/tracertraj
+outputs_root: outputs/tracertraj   # → outputs/tracertraj/<subset>/<model>/<method>/<id>.json
+
+# vLLM sampling/runtime defaults (a model spec may override any of these).
+dtype:          bfloat16
+seed:           0
+temperature:    0.6
+top_p:          0.95
+gen_max_tokens: 1024
+enable_thinking: false
+
+# tracertraj histories run to 73k Qwen tokens (median 5.9k, p90 14k); the
+# shared ceiling keeps the longest one whole. Both checkpoints support ≥128k.
+max_model_len:          131072
+truncate_prompt_tokens: null
+gpu_memory_utilization: 0.90
+tensor_parallel_size:   1
+
+start_idx: 0
+end_idx:   null
+
+model_specs:
+  qwen3.5-9b:
+    backend: vllm
+    model_path: ../hub/Qwen/Qwen3.5-9B
+  deepseek-8b:
+    backend: vllm
+    model_path: ../hub/deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    # Corrected tokenizer (fixes only tokenizer_class; see configs/ww.yaml).
+    tokenizer: baselines/prompting/tokenizers/deepseek-8b
+    # R1-Distill always emits <think>; 1024 would truncate the actual answer.
+    gen_max_tokens: 8192

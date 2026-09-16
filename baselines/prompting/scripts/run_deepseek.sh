@@ -30,8 +30,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
 mkdir -p logs
 
-# DATASETS: space-separated env override; default = all three.
-read -r -a DATASETS <<< "${DATASETS:-ww traceelephant correct-error}"
+# DATASETS: space-separated env override; default = all four.
+read -r -a DATASETS <<< "${DATASETS:-ww traceelephant tracertraj correct-error}"
 # DRY_RUN=1 → forward --dry-run to the sweep (prints commands without running).
 DRY=(); [[ "${DRY_RUN:-0}" == 1 ]] && DRY=(--dry-run)
 # EXTRA_SET: extra `--set k=v` overrides forwarded to every sweep invocation.

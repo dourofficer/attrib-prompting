@@ -32,6 +32,7 @@ methods' serialization, pooling and model arithmetic.
 | `correct-error` | arc (304), gaia (50), hotpot (578), math500 (157), mmlu_pro (92), musique (312), wikimqa (733) | yes | 1–3 |
 | `correct-error-nogt` | the same 2,226 trajectories as upstream ships them | no | 1–3 |
 | `traceelephant` | magentic (91), captain (85) | yes | 1–20 |
+| `tracertraj` (AgenTracer) | code (127) | yes | 1–20 |
 
 Corpora live at `data/<dataset>/<subset>/<id>.json`; agent identity is
 `history[t]["role"]`, gold labels are `mistake_agent`/`mistake_step`.
@@ -44,6 +45,14 @@ index into the source split) — see
 [`misc/build_correct_error_gt.py`](misc/build_correct_error_gt.py);
 `correct-error-nogt` preserves the upstream copy. Every dataset therefore
 supports both GT settings through the `--gt` flag below.
+
+`tracertraj` is the public test split of TracerTraj from *AgenTracer: Who Is
+Inducing Failure in the LLM Agentic Systems?* — MetaGPT-style software-company
+runs on coding tasks, copied byte-identical from the SOAP repo's
+`data/agentracer` (see `data/tracertraj/_provenance.json`). Its errors are
+injected rather than naturally occurring, so its numbers are not comparable
+to the other three corpora; its agent names carry spaces (`Product Manager`),
+which the shared answer parser resolves against the trajectory's agents.
 
 ## Install
 

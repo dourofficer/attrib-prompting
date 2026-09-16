@@ -46,6 +46,8 @@ from __future__ import annotations
 import re
 from typing import Generator
 
+from baselines.shared.common import standardize_role
+
 # The agent identity lives in the "role" field for every dataset in this repo.
 AGENT_KEY = "role"
 
@@ -59,6 +61,55 @@ SYSTEM_PROMPT = "You are a helpful assistant skilled in analyzing conversations.
 # well-formed responses parse identically to the vendored code.
 AGENT_RE = re.compile(r"Agent Name:\s*\(?\s*([\w_]+)\s*\)?", re.IGNORECASE)
 STEP_RE = re.compile(r"Step Number:\s*\(?\s*(\d+)\s*\)?", re.IGNORECASE)
+
+# Agent names with spaces. The vendored `[\w_]+` stops at the first space, so
+# on a corpus whose agents are called "Product Manager" or "Team Leader"
+# (tracertraj) it captures "Product" and the report scores a miss. When the
+# caller passes the trajectory's agent vocabulary, the vendored capture is
+# checked against it first; only when the capture is *not* a known agent does
+# the rest of the `Agent Name:` line get searched for one, earliest whole-word
+# occurrence winning (longest at the same offset). A capture that already
+# names a known agent is returned unchanged, so every parse the vendored rule
+# got right is byte-stable, and with no vocabulary the rule is the vendored one.
+# The field ends at the next label ("Step Number", "Reason"), a sentence end
+# or a newline, so an agent mentioned inside explanatory text never becomes
+# the prediction.
+_AGENT_LINE_RE = re.compile(r"Agent Name:\s*\(?\s*([^\n]*)", re.IGNORECASE)
+_FIELD_END_RE = re.compile(r"step number|reason|\.\s|;", re.IGNORECASE)
+
+
+def _norm_agent(name: str) -> str:
+    """The report's own normalization (report.py:_norm_agent), so a parse that
+    equals gold under this rule also scores as a hit."""
+    return standardize_role(str(name)).strip().lower()
+
+
+def _resolve_agent(capture: str, tail: str, agents) -> str:
+    known: dict[str, str] = {}          # normalized -> shortest spelling seen
+    for a in agents:
+        if not a:
+            continue
+        n = _norm_agent(a)
+        if n and (n not in known or len(str(a)) < len(known[n])):
+            known[n] = str(a)
+    m = _AGENT_LINE_RE.match(tail)
+    field = (m.group(1) if m else "").lower()
+    field = _FIELD_END_RE.split(field, maxsplit=1)[0]
+    hits = []
+    for n, spelled in known.items():
+        found = re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", field)
+        if found:
+            hits.append((found.start(), -len(n), spelled))
+    if not hits:
+        return capture
+    start, neg_len, spelled = min(hits)
+    cap = _norm_agent(capture)
+    # The capture stands whenever the report could already score it — equal to
+    # a known agent, or containing one (report._agent_hit's `gold in pred`) —
+    # unless the text at its own position spells a strictly longer agent.
+    if any(n in cap for n in known) and not (start == 0 and -neg_len > len(cap)):
+        return capture
+    return spelled
 
 # Markdown decoration to drop before applying the vendored regexes. Reasoning
 # models (e.g. DeepSeek-R1) bold the labels — `**Agent Name:** WebSurfer` — which
@@ -88,17 +139,26 @@ def _strip_markdown(text: str) -> str:
     return _MARKDOWN_RE.sub("", text)
 
 
-def parse_all_at_once(raw: str) -> tuple[str | None, int | None]:
+def parse_all_at_once(raw: str, agents=None) -> tuple[str | None, int | None]:
     """Extract (predicted_agent, predicted_step) from an all-at-once generation.
 
     Faithful to the vendored evaluate.py regexes; only strips <think> and cosmetic
     markdown first. Pure function of `raw` so it can re-parse stored predictions.
+    ``agents`` (the trajectory's agent names) enables the multi-word fallback
+    described at ``_AGENT_LINE_RE``; without it the rule is the vendored one.
     """
     answer = _strip_markdown(strip_think(raw))
     agent_m = AGENT_RE.search(answer)
     step_m = STEP_RE.search(answer)
-    return (agent_m.group(1) if agent_m else None,
-            int(step_m.group(1)) if step_m else None)
+    agent = agent_m.group(1) if agent_m else None
+    if agent is not None and agents:
+        agent = _resolve_agent(agent, answer[agent_m.start():], agents)
+    return agent, (int(step_m.group(1)) if step_m else None)
+
+
+def agent_vocabulary(history: list[dict]) -> list[str]:
+    """The agent names a trajectory can be blamed on, in first-seen order."""
+    return list(dict.fromkeys(_agent_of(entry) for entry in history))
 
 
 def _agent_of(entry: dict) -> str:
@@ -193,7 +253,7 @@ def all_at_once_program(record: dict, *, step_mode: str = "batch",
                                  include_gt=include_gt)
     )
     raw = (yield [prompt])[0]
-    agent, step = parse_all_at_once(raw)
+    agent, step = parse_all_at_once(raw, agent_vocabulary(record["history"]))
     return {
         "predicted_agent": agent,
         "predicted_step": step,
